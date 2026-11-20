@@ -1,0 +1,878 @@
+/**
+ * True Pass — Client Application Logic
+ * Integrates WebCam Face Recognition, Cryptographic Salted Hashing,
+ * Razorpay Simulation, Dynamic Holographic Tickets with Embedded Biometric QR Codes,
+ * and Live Venue Gate Entry Verification.
+ */
+
+// Application State
+const state = {
+  user: {
+    name: "Alex Vance",
+    wallet: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+    isEnrolled: false,
+    faceSnapshot: null,
+    biometricHash: null,
+    salt: null,
+  },
+  events: [
+    {
+      id: 1001,
+      title: "CYBERPUNK 2088: NEON HORIZONS",
+      subtitle: "Audio-Visual Electronic Rave & Live Synth",
+      date: "DEC 12, 2026 • 20:00 IST",
+      venue: "Bengaluru Grand Arena, IN",
+      price: 2499,
+      tier: "VIP Hologram Pass",
+      image: "https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?auto=format&fit=crop&w=800&q=80",
+      tags: ["Synthwave", "Laser Show", "18+"],
+    },
+    {
+      id: 1002,
+      title: "ETH GLOBAL DEVCON & AI SUMMIT",
+      subtitle: "The Premier Web3, Smart Contracts & ZK Conference",
+      date: "JAN 15, 2027 • 09:00 IST",
+      venue: "Jio World Convention Centre, Mumbai",
+      price: 4999,
+      tier: "Developer All-Access Pass",
+      image: "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=800&q=80",
+      tags: ["Solidity", "Zero-Knowledge", "Hackathon"],
+    },
+    {
+      id: 1003,
+      title: "SOLARIS ECLIPSE MUSIC FESTIVAL",
+      subtitle: "4 Stages, 48 Hours of Non-stop Techno & House",
+      date: "FEB 20, 2027 • 16:00 IST",
+      venue: "Vagator Beachfront, Goa",
+      price: 3200,
+      tier: "Weekend General Entry",
+      image: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=800&q=80",
+      tags: ["EDM", "Multi-stage", "Beach"],
+    },
+    {
+      id: 1004,
+      title: "FORMULA E WORLD PRIX VIP PADDOCK",
+      subtitle: "Electric Hypercar Street Race & Pit Lane Access",
+      date: "MAR 05, 2027 • 11:30 IST",
+      venue: "Necklace Road Street Circuit, Hyderabad",
+      price: 8500,
+      tier: "Paddock Club Pass",
+      image: "https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&w=800&q=80",
+      tags: ["Motorsport", "VIP Lounge", "Pit-Walk"],
+    },
+  ],
+  tickets: [],
+  selectedEventForCheckout: null,
+  cameraStream: null,
+  gateCameraStream: null,
+  selectedTicketForGate: null,
+};
+
+// Pepper used for server/commitment consistency
+const CLIENT_PEPPER = "TRUE_PASS_OFFCHAIN_SECRET_PEPPER_998877";
+
+// Initialize Application
+document.addEventListener("DOMContentLoaded", () => {
+  loadStateFromStorage();
+  renderEvents();
+  renderTickets();
+  updateUserUI();
+  setupGateTicketSelector();
+
+  // If user hasn't enrolled in face recognition yet, guide them
+  if (!state.user.isEnrolled) {
+    document.getElementById("enrollment-alert").classList.remove("hidden");
+  } else {
+    document.getElementById("enrollment-alert").classList.add("hidden");
+  }
+});
+
+// Storage Persistence
+function saveStateToStorage() {
+  localStorage.setItem("truepass_user", JSON.stringify(state.user));
+  localStorage.setItem("truepass_tickets", JSON.stringify(state.tickets));
+}
+
+function loadStateFromStorage() {
+  const savedUser = localStorage.getItem("truepass_user");
+  const savedTickets = localStorage.getItem("truepass_tickets");
+
+  if (savedUser) {
+    try {
+      state.user = { ...state.user, ...JSON.parse(savedUser) };
+    } catch (e) {}
+  }
+  if (savedTickets) {
+    try {
+      state.tickets = JSON.parse(savedTickets);
+    } catch (e) {}
+  }
+}
+
+// Navigation Tabs
+function navigateTab(tabName) {
+  // Hide all sections
+  document.querySelectorAll(".tab-section").forEach((sec) => sec.classList.add("hidden"));
+
+  // Reset tab button styles
+  document.querySelectorAll("nav button").forEach((btn) => {
+    btn.className =
+      "px-4 py-1.5 rounded-lg text-slate-400 hover:text-white transition flex items-center space-x-2";
+  });
+
+  // Activate selected section & button
+  const targetSection = document.getElementById(`section-${tabName}`);
+  const targetNav = document.getElementById(`nav-${tabName}`);
+
+  if (targetSection) targetSection.classList.remove("hidden");
+  if (targetNav) {
+    targetNav.className =
+      "px-4 py-1.5 rounded-lg text-white bg-brand-500/20 text-brand-400 border border-brand-500/30 transition flex items-center space-x-2";
+  }
+
+  // Handle camera triggers on tab switches
+  if (tabName === "biometrics" && !state.user.isEnrolled && !state.cameraStream) {
+    startCamera();
+  } else if (tabName !== "biometrics" && state.cameraStream) {
+    stopCamera();
+  }
+
+  if (tabName === "gate") {
+    setupGateTicketSelector();
+    startGateCamera();
+  } else if (state.gateCameraStream) {
+    stopGateCamera();
+  }
+
+  if (tabName === "tickets") {
+    renderTickets();
+  }
+
+  lucide.createIcons();
+}
+
+// Update User UI Status Pills
+function updateUserUI() {
+  const addressDisplay = document.getElementById("user-address-display");
+  const faceStatusPill = document.getElementById("user-face-status-pill");
+  const navBioBadge = document.getElementById("nav-bio-badge");
+  const ticketCountDisplay = document.getElementById("nav-ticket-count");
+  const enrolledHash = document.getElementById("enrolled-hash");
+  const enrolledBadge = document.getElementById("enrolled-badge");
+  const enrolledAvatar = document.getElementById("enrolled-avatar");
+
+  // Address
+  if (addressDisplay) {
+    const addr = state.user.wallet;
+    addressDisplay.textContent = `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  }
+
+  // Ticket count
+  if (ticketCountDisplay) {
+    ticketCountDisplay.textContent = state.tickets.length.toString();
+  }
+
+  // Face Enrollment Status
+  if (state.user.isEnrolled) {
+    faceStatusPill.className =
+      "px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center space-x-1";
+    faceStatusPill.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span><span>Face Verified</span>`;
+    navBioBadge.className = "w-2 h-2 rounded-full bg-emerald-400";
+
+    if (enrolledBadge) {
+      enrolledBadge.className =
+        "px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+      enrolledBadge.textContent = "Bound to Identity";
+    }
+    if (enrolledHash) {
+      enrolledHash.textContent = state.user.biometricHash;
+    }
+    if (enrolledAvatar && state.user.faceSnapshot) {
+      enrolledAvatar.innerHTML = `<img src="${state.user.faceSnapshot}" class="w-full h-full object-cover">`;
+    }
+
+    document.getElementById("enrollment-alert")?.classList.add("hidden");
+  } else {
+    faceStatusPill.className =
+      "px-1.5 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30";
+    faceStatusPill.textContent = "Needs Face ID";
+    navBioBadge.className = "w-2 h-2 rounded-full bg-amber-400 animate-pulse";
+
+    if (enrolledBadge) {
+      enrolledBadge.className =
+        "px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-amber-500/20 text-amber-300 border border-amber-500/30";
+      enrolledBadge.textContent = "Not Registered";
+    }
+    if (enrolledHash) {
+      enrolledHash.textContent = "None — Complete Step 1 above";
+    }
+    if (enrolledAvatar) {
+      enrolledAvatar.innerHTML = `<i data-lucide="user" class="w-6 h-6 text-slate-500"></i>`;
+    }
+  }
+
+  lucide.createIcons();
+}
+
+// -------------------------------------------------------------
+// EVENT MARKETPLACE
+// -------------------------------------------------------------
+function renderEvents() {
+  const container = document.getElementById("events-grid");
+  if (!container) return;
+
+  container.innerHTML = state.events
+    .map(
+      (evt) => `
+    <div class="bg-cyber-panel border border-slate-800 rounded-3xl overflow-hidden shadow-xl hover:border-slate-700 transition flex flex-col justify-between group">
+      <div>
+        <div class="relative h-48 w-full overflow-hidden bg-slate-900">
+          <img src="${evt.image}" alt="${evt.title}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500 opacity-90" />
+          <div class="absolute inset-0 bg-gradient-to-t from-cyber-panel via-transparent to-black/30"></div>
+          
+          <div class="absolute top-3 right-3 bg-black/60 backdrop-blur-md border border-white/10 px-2.5 py-1 rounded-lg text-xs font-mono font-bold text-cyber-cyan flex items-center space-x-1">
+            <i data-lucide="shield-check" class="w-3.5 h-3.5 text-cyber-cyan"></i>
+            <span>Biometric Anti-Scalp</span>
+          </div>
+
+          <div class="absolute bottom-3 left-3 flex flex-wrap gap-1.5">
+            ${evt.tags.map((t) => `<span class="px-2 py-0.5 rounded-md bg-slate-900/80 backdrop-blur-sm text-[10px] font-mono text-slate-300 border border-slate-700">${t}</span>`).join("")}
+          </div>
+        </div>
+
+        <div class="p-6">
+          <div class="flex items-center space-x-2 text-xs font-mono text-brand-400 font-semibold mb-1">
+            <i data-lucide="calendar" class="w-3.5 h-3.5"></i>
+            <span>${evt.date}</span>
+          </div>
+          <h2 class="text-xl font-bold text-white tracking-tight">${evt.title}</h2>
+          <p class="text-xs text-slate-400 mt-1 flex items-center space-x-1">
+            <i data-lucide="map-pin" class="w-3.5 h-3.5 text-slate-500 flex-shrink-0"></i>
+            <span>${evt.venue}</span>
+          </p>
+        </div>
+      </div>
+
+      <div class="p-6 pt-0 flex items-center justify-between border-t border-slate-800/80 mt-2">
+        <div>
+          <span class="text-[10px] font-mono uppercase text-slate-500 block">Ticket Price</span>
+          <span class="text-2xl font-black text-white">₹${evt.price.toLocaleString("en-IN")}</span>
+        </div>
+        <button onclick="handleInitiateBuyTicket(${evt.id})" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-brand-500 to-cyber-cyan hover:opacity-90 text-black font-extrabold text-xs uppercase tracking-wider transition shadow-lg shadow-brand-500/20 flex items-center space-x-1.5">
+          <i data-lucide="ticket" class="w-4 h-4"></i>
+          <span>Buy Ticket</span>
+        </button>
+      </div>
+    </div>
+  `
+    )
+    .join("");
+
+  lucide.createIcons();
+}
+
+// -------------------------------------------------------------
+// BIOMETRICS CAMERA & RECOGNITION STUDIO
+// -------------------------------------------------------------
+async function startCamera() {
+  const video = document.getElementById("webcam-video");
+  const hudStatus = document.getElementById("hud-status-text");
+
+  try {
+    if (state.cameraStream) {
+      stopCamera();
+    }
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: "user",
+        width: { ideal: 640 },
+        height: { ideal: 480 },
+      },
+    });
+
+    state.cameraStream = stream;
+    video.srcObject = stream;
+    video.play();
+
+    document.getElementById("snapshot-preview-container").classList.add("hidden");
+    document.getElementById("btn-capture-face").disabled = false;
+    hudStatus.textContent = "Face Centered • Ready to Scan";
+    hudStatus.className =
+      "text-xs font-mono uppercase font-bold text-cyber-cyan px-2 py-1 rounded bg-black/60 border border-cyber-cyan/30 tracking-wider";
+
+    startFaceHUDAnimation();
+  } catch (err) {
+    console.warn("Webcam access denied or unavailable:", err);
+    hudStatus.textContent = "Camera Unavailable (Use Demo Profile)";
+    hudStatus.className =
+      "text-xs font-mono uppercase font-bold text-amber-400 px-2 py-1 rounded bg-black/60 border border-amber-500/30 tracking-wider";
+  }
+}
+
+function stopCamera() {
+  if (state.cameraStream) {
+    state.cameraStream.getTracks().forEach((track) => track.stop());
+    state.cameraStream = null;
+  }
+}
+
+// Canvas HUD Animation Loop
+let hudAnimationId = null;
+function startFaceHUDAnimation() {
+  const canvas = document.getElementById("face-canvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+
+  canvas.width = canvas.parentElement.clientWidth;
+  canvas.height = canvas.parentElement.clientHeight;
+
+  let angle = 0;
+  function animate() {
+    if (!state.cameraStream) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+
+    // Outer rotating dashed rings
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate(angle);
+    ctx.strokeStyle = "rgba(0, 240, 255, 0.4)";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([8, 8]);
+    ctx.beginPath();
+    ctx.arc(0, 0, Math.min(centerX, centerY) * 0.75, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    // 4 Corner targeting markers
+    angle += 0.015;
+    hudAnimationId = requestAnimationFrame(animate);
+  }
+
+  cancelAnimationFrame(hudAnimationId);
+  animate();
+}
+
+// Helper: Calculate SHA-256 via browser Web Crypto API
+async function sha256Hex(message) {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `0x${hashHex}`;
+}
+
+// Capture Snapshot & Generate Biometric Hash
+async function captureBiometricSnapshot() {
+  const video = document.getElementById("webcam-video");
+  const previewContainer = document.getElementById("snapshot-preview-container");
+  const previewImg = document.getElementById("captured-snapshot-img");
+  const previewHash = document.getElementById("preview-hash-display");
+
+  // Create an offscreen canvas to capture the current video frame
+  const snapCanvas = document.createElement("canvas");
+  snapCanvas.width = 400;
+  snapCanvas.height = 400;
+  const ctx = snapCanvas.getContext("2d");
+
+  // Center crop square
+  const minDim = Math.min(video.videoWidth || 400, video.videoHeight || 400);
+  const startX = ((video.videoWidth || 400) - minDim) / 2;
+  const startY = ((video.videoHeight || 400) - minDim) / 2;
+
+  // Mirror effect when drawing
+  ctx.translate(400, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(video, startX, startY, minDim, minDim, 0, 0, 400, 400);
+
+  const snapshotDataUrl = snapCanvas.toDataURL("image/jpeg", 0.85);
+
+  // Generate Salt & Commitment
+  const attendeeSalt = `salt_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  const mockBiometricVector = `VEC_${snapshotDataUrl.slice(-100)}_${state.user.wallet}`;
+  const biometricCommitment = await sha256Hex(`${mockBiometricVector}:${attendeeSalt}:${CLIENT_PEPPER}`);
+
+  // Update State
+  state.user.isEnrolled = true;
+  state.user.faceSnapshot = snapshotDataUrl;
+  state.user.salt = attendeeSalt;
+  state.user.biometricHash = biometricCommitment;
+
+  saveStateToStorage();
+  updateUserUI();
+
+  // Show captured preview
+  previewImg.src = snapshotDataUrl;
+  previewHash.textContent = biometricCommitment;
+  previewContainer.classList.remove("hidden");
+
+  stopCamera();
+
+  // Show toast notification
+  alert(`✅ Face Recognition Enrolled Successfully!\n\nYour Salted Biometric Commitment:\n${biometricCommitment}\n\nYou can now buy tickets.`);
+}
+
+// Fallback: Synthetic / Demo Face Profile
+async function useMockBiometricProfile() {
+  const syntheticAvatar = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80";
+  const attendeeSalt = `salt_demo_${Math.random().toString(36).substring(2, 9)}`;
+  const biometricCommitment = await sha256Hex(`FACE_SYNTH_VECTOR_ALEX_VANCE:${attendeeSalt}:${CLIENT_PEPPER}`);
+
+  state.user.isEnrolled = true;
+  state.user.faceSnapshot = syntheticAvatar;
+  state.user.salt = attendeeSalt;
+  state.user.biometricHash = biometricCommitment;
+
+  saveStateToStorage();
+  updateUserUI();
+
+  const previewContainer = document.getElementById("snapshot-preview-container");
+  const previewImg = document.getElementById("captured-snapshot-img");
+  const previewHash = document.getElementById("preview-hash-display");
+
+  if (previewContainer && previewImg && previewHash) {
+    previewImg.src = syntheticAvatar;
+    previewHash.textContent = biometricCommitment;
+    previewContainer.classList.remove("hidden");
+  }
+
+  stopCamera();
+  alert(`✅ Demo Face Profile Activated!\n\nBiometric Commitment:\n${biometricCommitment}`);
+}
+
+function resetBiometrics() {
+  if (confirm("Reset current biometric enrollment? You will need to re-scan before buying new tickets.")) {
+    state.user.isEnrolled = false;
+    state.user.faceSnapshot = null;
+    state.user.biometricHash = null;
+    state.user.salt = null;
+
+    saveStateToStorage();
+    updateUserUI();
+    document.getElementById("snapshot-preview-container")?.classList.add("hidden");
+    startCamera();
+  }
+}
+
+// -------------------------------------------------------------
+// CHECKOUT & RAZORPAY INTEGRATION
+// -------------------------------------------------------------
+function handleInitiateBuyTicket(eventId) {
+  // Step 1 Check: Face Recognition Mandatory
+  if (!state.user.isEnrolled || !state.user.biometricHash) {
+    alert("⚠️ Step 1 Required:\n\nPlease complete Face Recognition enrollment before purchasing a ticket.");
+    navigateTab("biometrics");
+    return;
+  }
+
+  const selectedEvent = state.events.find((e) => e.id === eventId);
+  if (!selectedEvent) return;
+
+  state.selectedEventForCheckout = selectedEvent;
+
+  // Populate Checkout Modal
+  document.getElementById("modal-event-title").textContent = selectedEvent.title;
+  document.getElementById("modal-event-tier").textContent = selectedEvent.tier;
+  document.getElementById("modal-event-date").textContent = `${selectedEvent.venue} • ${selectedEvent.date}`;
+  document.getElementById("modal-event-price").textContent = `₹${selectedEvent.price.toLocaleString("en-IN")}`;
+  document.getElementById("modal-attendee-face").src = state.user.faceSnapshot;
+  document.getElementById("modal-attendee-hash").textContent = state.user.biometricHash;
+
+  document.getElementById("btn-confirm-payment").classList.remove("hidden");
+  document.getElementById("payment-processing").classList.add("hidden");
+
+  // Open Modal
+  document.getElementById("checkout-modal").classList.remove("hidden");
+  lucide.createIcons();
+}
+
+function closeCheckoutModal() {
+  document.getElementById("checkout-modal").classList.add("hidden");
+  state.selectedEventForCheckout = null;
+}
+
+// Simulate Razorpay Payment & Smart Contract Mint Relayer
+async function executeRazorpayPayment() {
+  const event = state.selectedEventForCheckout;
+  if (!event) return;
+
+  const confirmBtn = document.getElementById("btn-confirm-payment");
+  const processingBox = document.getElementById("payment-processing");
+  const statusText = document.getElementById("processing-status-text");
+
+  confirmBtn.classList.add("hidden");
+  processingBox.classList.remove("hidden");
+
+  statusText.textContent = "Processing Razorpay Payment...";
+
+  // Simulate network payment capture latency
+  await new Promise((resolve) => setTimeout(resolve, 1400));
+
+  statusText.textContent = "Payment Captured (INR)! Relayer minting ERC-721 token on-chain...";
+  await new Promise((resolve) => setTimeout(resolve, 1600));
+
+  // Generate on-chain ticket entity
+  const nextTokenId = state.tickets.length + 1;
+  const mockTxHash = `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join("")}`;
+
+  const newTicket = {
+    tokenId: nextTokenId,
+    eventId: event.id,
+    eventTitle: event.title,
+    eventDate: event.date,
+    venue: event.venue,
+    tier: event.tier,
+    price: event.price,
+    owner: state.user.wallet,
+    attendeeName: state.user.name,
+    faceSnapshot: state.user.faceSnapshot,
+    biometricHash: state.user.biometricHash,
+    status: "ACTIVE", // ACTIVE | USED | CANCELLED
+    mintedAt: Math.floor(Date.now() / 1000),
+    txHash: mockTxHash,
+    blockNumber: 19482030 + nextTokenId,
+  };
+
+  state.tickets.unshift(newTicket);
+  saveStateToStorage();
+
+  closeCheckoutModal();
+  updateUserUI();
+  navigateTab("tickets");
+
+  alert(
+    `🎉 Ticket Minted Successfully!\n\n` +
+      `Token ID: #TPASS-${nextTokenId}\n` +
+      `Bound Biometric Hash: ${newTicket.biometricHash.slice(0, 14)}...\n` +
+      `On-Chain Tx: ${mockTxHash.slice(0, 16)}...\n\n` +
+      `Your face is now cryptographically encoded into the ticket QR.`
+  );
+}
+
+// -------------------------------------------------------------
+// MY TICKETS — HOLOGRAPHIC PASS WITH EMBEDDED BIOMETRIC QR
+// -------------------------------------------------------------
+function renderTickets() {
+  const container = document.getElementById("tickets-list");
+  const emptyState = document.getElementById("tickets-empty");
+  if (!container) return;
+
+  if (state.tickets.length === 0) {
+    container.innerHTML = "";
+    emptyState?.classList.remove("hidden");
+    return;
+  }
+
+  emptyState?.classList.add("hidden");
+
+  container.innerHTML = state.tickets
+    .map((t, idx) => {
+      const isUsed = t.status === "USED";
+      const statusBadge = isUsed
+        ? `<span class="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-slate-800 text-slate-400 border border-slate-700 flex items-center space-x-1">
+             <span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span><span>REDEEMED (USED)</span>
+           </span>`
+        : `<span class="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center space-x-1">
+             <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span><span>ACTIVE • ENTRY READY</span>
+           </span>`;
+
+      return `
+      <div class="ticket-card rounded-3xl p-6 sm:p-7 relative overflow-hidden flex flex-col justify-between ${isUsed ? "opacity-60" : ""}">
+        <div class="ticket-foil absolute inset-0 pointer-events-none"></div>
+        <div class="ticket-notch-left"></div>
+        <div class="ticket-notch-right"></div>
+        <div class="ticket-perforation"></div>
+
+        <!-- Top Header -->
+        <div class="relative z-10">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center space-x-2">
+              <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-brand-500/20 text-brand-300 border border-brand-500/40">
+                #TPASS-${String(t.tokenId).padStart(3, "0")}
+              </span>
+              <span class="text-xs font-mono text-slate-400 font-semibold">${t.tier}</span>
+            </div>
+            ${statusBadge}
+          </div>
+
+          <h3 class="text-xl sm:text-2xl font-black text-white tracking-tight">${t.eventTitle}</h3>
+          <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 text-xs text-slate-400 mt-2 font-mono">
+            <span class="flex items-center space-x-1">
+              <i data-lucide="calendar" class="w-3.5 h-3.5 text-brand-400"></i>
+              <span>${t.eventDate}</span>
+            </span>
+            <span class="flex items-center space-x-1">
+              <i data-lucide="map-pin" class="w-3.5 h-3.5 text-brand-400"></i>
+              <span>${t.venue}</span>
+            </span>
+          </div>
+        </div>
+
+        <!-- Middle Section: Face & Biometric Commitment Badge -->
+        <div class="relative z-10 my-6 pt-6 border-t border-slate-800/80">
+          <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 flex items-center space-x-4">
+            
+            <!-- Attendee Face Snapshot Attached -->
+            <div class="relative w-16 h-16 sm:w-18 sm:h-18 rounded-xl overflow-hidden border-2 border-brand-400 shadow-md flex-shrink-0 bg-black">
+              <img src="${t.faceSnapshot}" alt="Bound Face" class="w-full h-full object-cover" />
+              <div class="absolute bottom-0 inset-x-0 bg-black/70 text-[8px] font-mono text-center text-brand-300 py-0.5">
+                BOUND FACE
+              </div>
+            </div>
+
+            <!-- Details -->
+            <div class="overflow-hidden flex-1">
+              <div class="text-[11px] font-mono text-slate-400 uppercase">Registered Attendee</div>
+              <div class="text-sm font-bold text-white truncate">${t.attendeeName} (${t.owner.slice(0, 6)}...${t.owner.slice(-4)})</div>
+              
+              <div class="mt-1 flex items-center space-x-1 text-[10px] font-mono text-brand-300/90 bg-brand-950/40 px-2 py-0.5 rounded border border-brand-500/20 truncate">
+                <i data-lucide="fingerprint" class="w-3 h-3 text-brand-400 flex-shrink-0"></i>
+                <span class="truncate" title="${t.biometricHash}">${t.biometricHash}</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Bottom Section: Cryptographic Biometric QR Code -->
+        <div class="relative z-10 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div class="text-left">
+            <span class="text-[10px] font-mono text-slate-400 uppercase tracking-widest block">One-Time Scannable QR</span>
+            <span class="text-xs text-slate-300 block mt-0.5">Contains on-chain Token ID & Salted Biometric Hash for physical gatekeeper match.</span>
+            <span class="text-[10px] font-mono text-slate-500 mt-2 block">Tx: ${t.txHash.slice(0, 18)}...</span>
+          </div>
+
+          <!-- Dynamic QR Container -->
+          <div class="bg-white p-2.5 rounded-2xl shadow-xl flex-shrink-0" id="ticket-qr-${t.tokenId}"></div>
+        </div>
+
+        <!-- Action Bar -->
+        <div class="relative z-10 mt-6 pt-4 border-t border-slate-800 flex items-center justify-end space-x-3">
+          ${
+            !isUsed
+              ? `<button onclick="sendTicketToGateScanner(${t.tokenId})" class="px-4 py-2 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-mono font-bold transition flex items-center space-x-1.5">
+                   <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+                   <span>Test Gate Entry</span>
+                 </button>`
+              : `<span class="text-xs font-mono text-slate-500">Ticket Redeemed at Venue</span>`
+          }
+        </div>
+
+      </div>
+    `;
+    })
+    .join("");
+
+  // Generate QR codes for each ticket
+  state.tickets.forEach((t) => {
+    const qrContainer = document.getElementById(`ticket-qr-${t.tokenId}`);
+    if (qrContainer && typeof QRCode !== "undefined") {
+      qrContainer.innerHTML = "";
+      // Payload encoded into the QR code includes the biometric commitment!
+      const qrPayload = JSON.stringify({
+        v: "1.0",
+        tokenId: t.tokenId,
+        eventId: t.eventId,
+        owner: t.owner,
+        biometricHash: t.biometricHash,
+        mintedAt: t.mintedAt,
+        status: t.status,
+      });
+
+      new QRCode(qrContainer, {
+        text: qrPayload,
+        width: 110,
+        height: 110,
+        colorDark: "#0a0d14",
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.M,
+      });
+    }
+  });
+
+  lucide.createIcons();
+}
+
+function sendTicketToGateScanner(tokenId) {
+  navigateTab("gate");
+  selectTicketForGate(tokenId);
+}
+
+// -------------------------------------------------------------
+// GATE SCANNER (VENUE ENTRY VERIFICATION DEMO)
+// -------------------------------------------------------------
+function setupGateTicketSelector() {
+  const container = document.getElementById("gate-ticket-selector");
+  if (!container) return;
+
+  if (state.tickets.length === 0) {
+    container.innerHTML = `<div class="text-xs text-slate-500 font-mono">No tickets purchased yet. Buy a ticket first to test gate redemption.</div>`;
+    return;
+  }
+
+  container.innerHTML = state.tickets
+    .map((t) => {
+      const isSelected = state.selectedTicketForGate && state.selectedTicketForGate.tokenId === t.tokenId;
+      return `
+      <div onclick="selectTicketForGate(${t.tokenId})" class="p-3 rounded-2xl border ${
+        isSelected ? "border-purple-500 bg-purple-500/10" : "border-slate-800 bg-slate-900/60"
+      } cursor-pointer hover:border-slate-700 transition flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-xl overflow-hidden border border-slate-700 bg-black flex-shrink-0">
+            <img src="${t.faceSnapshot}" class="w-full h-full object-cover" />
+          </div>
+          <div>
+            <div class="text-xs font-bold text-white">#TPASS-${t.tokenId}: ${t.eventTitle}</div>
+            <div class="text-[10px] font-mono text-slate-400">${t.attendeeName} • ${t.status}</div>
+          </div>
+        </div>
+        <span class="text-[10px] font-mono ${t.status === "ACTIVE" ? "text-emerald-400" : "text-slate-500"} font-bold">
+          ${t.status}
+        </span>
+      </div>
+    `;
+    })
+    .join("");
+
+  if (!state.selectedTicketForGate && state.tickets.length > 0) {
+    selectTicketForGate(state.tickets[0].tokenId);
+  }
+}
+
+function selectTicketForGate(tokenId) {
+  const ticket = state.tickets.find((t) => t.tokenId === tokenId);
+  if (!ticket) return;
+
+  state.selectedTicketForGate = ticket;
+
+  document.getElementById("gate-preview-title").textContent = `#TPASS-${ticket.tokenId} - ${ticket.eventTitle}`;
+  document.getElementById("gate-preview-hash").textContent = ticket.biometricHash;
+
+  const statusEl = document.getElementById("gate-preview-status");
+  statusEl.textContent = ticket.status;
+  statusEl.className =
+    ticket.status === "ACTIVE"
+      ? "px-2 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-300 font-mono"
+      : "px-2 py-0.5 rounded text-[10px] bg-slate-800 text-slate-400 font-mono";
+
+  setupGateTicketSelector();
+  document.getElementById("gate-result-box").classList.add("hidden");
+}
+
+async function startGateCamera() {
+  const video = document.getElementById("gate-webcam");
+  if (!video) return;
+
+  try {
+    if (state.gateCameraStream) {
+      stopGateCamera();
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+    state.gateCameraStream = stream;
+    video.srcObject = stream;
+    video.play();
+  } catch (e) {
+    console.warn("Gate camera not accessible", e);
+  }
+}
+
+function stopGateCamera() {
+  if (state.gateCameraStream) {
+    state.gateCameraStream.getTracks().forEach((t) => t.stop());
+    state.gateCameraStream = null;
+  }
+}
+
+// Simulate Gate Biometric Scan & State Transition (Active -> Used)
+function simulateGateVerification(isLegitimateMatch) {
+  const ticket = state.selectedTicketForGate;
+  const resultBox = document.getElementById("gate-result-box");
+  if (!ticket) {
+    alert("Please select a ticket first.");
+    return;
+  }
+
+  resultBox.classList.remove("hidden");
+
+  // Case 1: Ticket Already Used
+  if (ticket.status === "USED") {
+    resultBox.className =
+      "mt-6 p-6 rounded-3xl border border-rose-500/40 bg-rose-500/10 text-center animate-scale-up";
+    resultBox.innerHTML = `
+      <div class="w-12 h-12 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto mb-3">
+        <i data-lucide="shield-alert" class="w-6 h-6"></i>
+      </div>
+      <h3 class="text-lg font-black text-rose-400">ENTRY DENIED — TICKET ALREADY USED</h3>
+      <p class="text-xs text-slate-300 mt-1 max-w-md mx-auto">
+        Token #TPASS-${ticket.tokenId} has already been redeemed at the venue entrance. Re-entry or secondary scanning is blocked by contract state.
+      </p>
+    `;
+    lucide.createIcons();
+    return;
+  }
+
+  // Case 2: Fraudster / Imposter Face Mismatch
+  if (!isLegitimateMatch) {
+    resultBox.className =
+      "mt-6 p-6 rounded-3xl border border-amber-500/40 bg-amber-500/10 text-center animate-scale-up";
+    resultBox.innerHTML = `
+      <div class="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto mb-3">
+        <i data-lucide="user-x" class="w-6 h-6"></i>
+      </div>
+      <h3 class="text-lg font-black text-amber-400">ENTRY REJECTED — BIOMETRIC MISMATCH</h3>
+      <p class="text-xs text-slate-300 mt-1 max-w-md mx-auto">
+        The face scanned at the turnstile does not match the salted biometric commitment (<code class="text-amber-300 font-mono">${ticket.biometricHash.slice(0, 14)}...</code>) bound to this ticket on-chain. Fraud prevention triggered.
+      </p>
+    `;
+    lucide.createIcons();
+    return;
+  }
+
+  // Case 3: Legitimate Match (Success -> Active to Used)
+  ticket.status = "USED";
+  ticket.redeemedAt = Math.floor(Date.now() / 1000);
+  saveStateToStorage();
+
+  selectTicketForGate(ticket.tokenId);
+
+  resultBox.className =
+    "mt-6 p-6 rounded-3xl border border-emerald-500/40 bg-emerald-500/10 text-center animate-scale-up";
+  resultBox.innerHTML = `
+    <div class="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto mb-3">
+      <i data-lucide="check-circle" class="w-6 h-6"></i>
+    </div>
+    <h3 class="text-lg font-black text-emerald-400">ACCESS GRANTED — WELCOME TO THE EVENT</h3>
+    <p class="text-xs text-slate-300 mt-1 max-w-md mx-auto">
+      Face recognized & validated against on-chain hash! Smart contract executed <code class="text-emerald-300 font-mono">redeemTicket(${ticket.tokenId})</code>. State transitioned: <strong class="text-white">Active → Used</strong>.
+    </p>
+  `;
+  lucide.createIcons();
+}
+
+// -------------------------------------------------------------
+// USER PROFILE MODAL
+// -------------------------------------------------------------
+function openLoginModal() {
+  document.getElementById("input-username").value = state.user.name;
+  document.getElementById("input-wallet").value = state.user.wallet;
+  document.getElementById("login-modal").classList.remove("hidden");
+}
+
+function closeLoginModal() {
+  document.getElementById("login-modal").classList.add("hidden");
+}
+
+function saveUserProfile() {
+  const nameInput = document.getElementById("input-username").value.trim();
+  const walletInput = document.getElementById("input-wallet").value.trim();
+
+  if (nameInput) state.user.name = nameInput;
+  if (walletInput) state.user.wallet = walletInput;
+
+  saveStateToStorage();
+  updateUserUI();
+  closeLoginModal();
+}
