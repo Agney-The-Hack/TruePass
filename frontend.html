@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>True Pass — Fraud-Proof Biometric Web3 Ticketing</title>
+  <title>TruePass — Verified Event Ticketing & Biometric Gatekeeper</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -13,24 +13,19 @@
       theme: {
         extend: {
           colors: {
-            brand: {
-              50: '#f0fdfa',
-              400: '#2dd4bf',
-              500: '#14b8a6',
-              600: '#0d9488',
-              900: '#134e4a',
-            },
-            cyber: {
-              cyan: '#00f0ff',
-              neon: '#39ff14',
-              purple: '#b026ff',
-              dark: '#0a0d14',
-              panel: '#111726',
+            bms: {
+              red: '#f84464',
+              redHover: '#e03756',
+              dark: '#0f1017',
+              header: '#1f2533',
+              nav: '#222738',
+              card: '#1e2333',
+              border: '#2d3448',
             }
           },
           fontFamily: {
-            mono: ['"JetBrains Mono"', 'monospace'],
             sans: ['"Inter"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
           }
         }
       }
@@ -40,397 +35,725 @@
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
 
-  <!-- QR Code Library -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <!-- QR Code — self-contained, no CDN needed, works on file:// -->
+  <script>
+  /**
+   * Minimal QR code generator — builds a data-URL PNG from pure JS.
+   * API: window.TruePassQR.toDataURL(text, size) → Promise<string>
+   * Uses the browser's built-in Canvas; no external library needed.
+   */
+  (function(){
+    // Reed-Solomon GF(256) tables
+    var EXP=new Uint8Array(512),LOG=new Uint8Array(256);
+    (function(){var x=1;for(var i=0;i<255;i++){EXP[i]=x;LOG[x]=i;x<<=1;if(x&256)x^=285;}for(var i=255;i<512;i++)EXP[i]=EXP[i-255];})();
+    function gfMul(a,b){return(a&&b)?EXP[LOG[a]+LOG[b]]:0;}
+    function gfPoly(deg,coeff){var p=new Uint8Array(deg+1);p[0]=coeff;for(var i=0;i<deg;i++){var r=new Uint8Array(p.length+1);for(var j=0;j<p.length;j++){r[j]^=gfMul(p[j],EXP[i]);r[j+1]^=p[j];}p=r;}return p;}
+    function gfPolyMul(p,q){var r=new Uint8Array(p.length+q.length-1);for(var i=0;i<p.length;i++)for(var j=0;j<q.length;j++)r[i+j]^=gfMul(p[i],q[j]);return r;}
+    function gfPolyMod(msg,div){var r=new Uint8Array(msg);for(var i=0;i<msg.length-(div.length-1);i++){var c=r[i];if(c)for(var j=1;j<div.length;j++)r[i+j]^=gfMul(div[j],c);}return r.slice(msg.length-(div.length-1));}
 
-  <!-- Custom Styles -->
+    // QR data encoding (byte mode, ECC level M)
+    var ECCBLOCKS={1:[10,1,19,0,0],2:[16,1,34,0,0],3:[26,1,55,0,0],4:[18,2,80,0,0],5:[24,2,108,0,0],6:[16,4,136,0,0],7:[18,4,156,0,0]};
+    var MASKS=[function(r,c){return(r+c)%2===0;},function(r,c){return r%2===0;},function(r,c){return c%3===0;},function(r,c){return(r+c)%3===0;},function(r,c){return(Math.floor(r/2)+Math.floor(c/3))%2===0;},function(r,c){return(r*c)%2+(r*c)%3===0;},function(r,c){return((r*c)%2+(r*c)%3)%2===0;},function(r,c){return((r+c)%2+(r*c)%3)%2===0;}];
+
+    function encode(text){
+      // UTF-8 bytes
+      var bytes=[];
+      for(var i=0;i<text.length;i++){
+        var c=text.charCodeAt(i);
+        if(c<128)bytes.push(c);
+        else if(c<2048)bytes.push(0xC0|(c>>6),0x80|(c&63));
+        else bytes.push(0xE0|(c>>12),0x80|((c>>6)&63),0x80|(c&63));
+      }
+      var len=bytes.length;
+      // Pick version
+      var ver=1;
+      var cap=[0,19,34,55,80,108,136,156];
+      while(ver<=7&&cap[ver]<len+2)ver++;
+      if(ver>7)ver=7; // clamp
+
+      var eb=ECCBLOCKS[ver];
+      var totalBytes=eb[2];
+      var eccPerBlock=eb[0];
+      var blocks1=eb[1];
+      var dataPerBlock=Math.floor((totalBytes-eccPerBlock*(blocks1+(eb[3]||0)))/(blocks1+(eb[3]||0)));
+
+      // Build bit stream
+      var bits=[];
+      function pushBits(val,n){for(var i=n-1;i>=0;i--)bits.push((val>>i)&1);}
+      pushBits(4,4);       // byte mode
+      pushBits(len,8);     // char count
+      for(var i=0;i<len;i++)pushBits(bytes[i],8);
+      // terminator
+      for(var i=0;i<4&&bits.length<totalBytes*8;i++)bits.push(0);
+      // pad to byte
+      while(bits.length%8)bits.push(0);
+      // fill pads
+      var pads=[0xEC,0x11];var pi=0;
+      while(bits.length<totalBytes*8){var b=pads[pi%2];pi++;for(var i=7;i>=0;i--)bits.push((b>>i)&1);}
+
+      // bytes array
+      var data=new Uint8Array(totalBytes);
+      for(var i=0;i<totalBytes;i++){var v=0;for(var j=0;j<8;j++)v=(v<<1)|bits[i*8+j];data[i]=v;}
+
+      // Split into blocks & compute ECC
+      var allBlocks=[];
+      var idx=0;
+      for(var b=0;b<blocks1;b++){allBlocks.push(data.slice(idx,idx+dataPerBlock));idx+=dataPerBlock;}
+      var allEcc=[];
+      var gen=gfPoly(eccPerBlock,1);
+      for(var b=1;b<eccPerBlock;b++)gen=gfPolyMul(gen,gfPoly(1,EXP[b]));
+      for(var b=0;b<allBlocks.length;b++){var msg=new Uint8Array(allBlocks[b].length+eccPerBlock);msg.set(allBlocks[b]);allEcc.push(gfPolyMod(msg,gen));}
+
+      // Interleave
+      var final=[];
+      var maxData=Math.max.apply(null,allBlocks.map(function(b){return b.length;}));
+      for(var i=0;i<maxData;i++)for(var b=0;b<allBlocks.length;b++)if(i<allBlocks[b].length)final.push(allBlocks[b][i]);
+      var maxEcc=Math.max.apply(null,allEcc.map(function(b){return b.length;}));
+      for(var i=0;i<maxEcc;i++)for(var b=0;b<allEcc.length;b++)if(i<allEcc[b].length)final.push(allEcc[b][i]);
+
+      return{ver:ver,data:new Uint8Array(final)};
+    }
+
+    function buildMatrix(ver,data){
+      var size=ver*4+17;
+      var mat=[];
+      for(var i=0;i<size;i++){mat.push(new Uint8Array(size));} // 0=light,1=dark,2=reserved
+      var func=[];
+      for(var i=0;i<size;i++)func.push(new Uint8Array(size));
+
+      function setFunc(r,c,v){if(r>=0&&r<size&&c>=0&&c<size){mat[r][c]=v;func[r][c]=1;}}
+      // Finder patterns
+      function finder(tr,tc){
+        for(var r=-1;r<=7;r++)for(var c=-1;c<=7;c++){
+          var v=(r>=0&&r<=6&&(c===0||c===6))||(c>=0&&c<=6&&(r===0||r===6))||(r>=2&&r<=4&&c>=2&&c<=4)?1:0;
+          setFunc(tr+r,tc+c,v);
+        }
+      }
+      finder(0,0);finder(0,size-7);finder(size-7,0);
+      // Timing
+      for(var i=8;i<size-8;i++){setFunc(6,i,i%2===0?1:0);setFunc(i,6,i%2===0?1:0);}
+      // Dark module
+      setFunc(size-8,8,1);
+      // Format info placeholders
+      var fmtPos=[[8,0],[8,1],[8,2],[8,3],[8,4],[8,5],[8,7],[8,8],[7,8],[5,8],[4,8],[3,8],[2,8],[1,8],[0,8],[size-7,8],[size-6,8],[size-5,8],[size-4,8],[size-3,8],[size-2,8],[size-1,8],[8,size-8],[8,size-7],[8,size-6],[8,size-5],[8,size-4],[8,size-3],[8,size-2],[8,size-1]];
+      for(var i=0;i<fmtPos.length;i++){var p=fmtPos[i];setFunc(p[0],p[1],0);}
+
+      // Data placement
+      var dataIdx=0;var dataLen=data.length*8;
+      var row=size-1;var col=size-1;var goUp=true;
+      var colSkip=0;
+      var byteIdx=0;var bitIdx=7;
+      while(col>=0){
+        if(col===6)col--;
+        for(var rowStep=0;rowStep<size;rowStep++){
+          var r=goUp?size-1-rowStep:rowStep;
+          for(var ci=0;ci<2;ci++){
+            var c=col-ci;
+            if(!func[r][c]){
+              var bit=0;
+              if(byteIdx<data.length)bit=(data[byteIdx]>>bitIdx)&1;
+              bitIdx--;
+              if(bitIdx<0){bitIdx=7;byteIdx++;}
+              mat[r][c]=bit;
+            }
+          }
+        }
+        goUp=!goUp;col-=2;
+      }
+
+      // Apply mask 0 (checkerboard) — simple, always OK for display
+      var maskFn=MASKS[0];
+      var fmt=buildFormat(1,0); // ECC=M(01), mask=0
+      for(var r=0;r<size;r++)for(var c=0;c<size;c++)if(!func[r][c]&&maskFn(r,c))mat[r][c]^=1;
+
+      // Write format bits
+      var fmtPosA=[[8,0],[8,1],[8,2],[8,3],[8,4],[8,5],[8,7],[8,8],[7,8],[5,8],[4,8],[3,8],[2,8],[1,8],[0,8]];
+      var fmtPosB=[[size-1,8],[size-2,8],[size-3,8],[size-4,8],[size-5,8],[size-6,8],[size-7,8],[8,size-8],[8,size-7],[8,size-6],[8,size-5],[8,size-4],[8,size-3],[8,size-2],[8,size-1]];
+      for(var i=0;i<15;i++){var bit=(fmt>>>(14-i))&1;var pa=fmtPosA[i];var pb=fmtPosB[i];mat[pa[0]][pa[1]]=bit;mat[pb[0]][pb[1]]=bit;}
+      mat[size-8][8]=1;
+
+      return{mat:mat,size:size};
+    }
+
+    function buildFormat(eccLevel,maskPattern){
+      var data=(eccLevel<<3)|maskPattern;
+      var d=data<<10;
+      var gen=0x537;
+      for(var i=14;i>=10;i--)if((d>>i)&1)d^=gen<<(i-10);
+      var fmt=((data<<10)|d)^0x5412;
+      return fmt;
+    }
+
+    function toDataURL(text,size){
+      size=size||200;
+      return new Promise(function(resolve){
+        try{
+          var enc=encode(text);
+          var mx=buildMatrix(enc.ver,enc.data);
+          var modules=mx.mat;var n=mx.size;
+          var scale=Math.floor(size/n);if(scale<1)scale=1;
+          var quiet=scale*4;
+          var total=n*scale+quiet*2;
+          var cvs=document.createElement('canvas');
+          cvs.width=total;cvs.height=total;
+          var ctx=cvs.getContext('2d');
+          ctx.fillStyle='#fff';ctx.fillRect(0,0,total,total);
+          ctx.fillStyle='#000';
+          for(var r=0;r<n;r++)for(var c=0;c<n;c++)if(modules[r][c])ctx.fillRect(quiet+c*scale,quiet+r*scale,scale,scale);
+          resolve(cvs.toDataURL('image/png'));
+        }catch(e){console.error('QR error:',e);resolve(null);}
+      });
+    }
+
+    window.TruePassQR={toDataURL:toDataURL};
+  })();
+  </script>
+
+  <!-- Ethers.js Web3 Library (v6) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.2/ethers.umd.min.js"></script>
+
+  <!-- Supabase JS Client (v2) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabaseClient.js"></script>
+
+  <!-- Smart Contract Configuration -->
+  <script src="contractInfo.js"></script>
+
+  <!-- Custom Stylesheet -->
   <link rel="stylesheet" href="styles.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 </head>
-<body class="bg-cyber-dark text-slate-100 min-h-screen font-sans selection:bg-brand-500 selection:text-black">
+<body class="bg-bms-dark text-white min-h-screen font-sans selection:bg-[#f84464] selection:text-white">
 
-  <!-- Background Glowing Orbs -->
-  <div class="fixed inset-0 overflow-hidden pointer-events-none z-0">
-    <div class="absolute -top-40 -left-40 w-96 h-96 bg-brand-500/10 rounded-full blur-3xl"></div>
-    <div class="absolute top-1/2 -right-40 w-96 h-96 bg-cyber-purple/10 rounded-full blur-3xl"></div>
-    <div class="absolute -bottom-40 left-1/3 w-96 h-96 bg-cyber-cyan/10 rounded-full blur-3xl"></div>
-  </div>
-
-  <div class="relative z-10 flex flex-col min-h-screen">
-    <!-- Navigation Bar -->
-    <header class="border-b border-slate-800/80 backdrop-blur-md bg-cyber-dark/80 sticky top-0 z-40">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        
-        <!-- Brand -->
-        <div class="flex items-center space-x-3 cursor-pointer" onclick="navigateTab('events')">
-          <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-500 to-cyber-cyan p-0.5 shadow-lg shadow-brand-500/20">
-            <div class="w-full h-full bg-cyber-dark rounded-[10px] flex items-center justify-center">
-              <i data-lucide="scan-face" class="w-5 h-5 text-cyber-cyan"></i>
-            </div>
+  <!-- =========================================================================
+       BOOKMYSHOW NAVIGATION HEADER
+       ========================================================================= -->
+  <header class="sticky top-0 z-40 shadow-lg">
+    <!-- Top Bar -->
+    <div class="bms-header-top px-4 sm:px-8 py-3 flex items-center justify-between gap-4">
+      
+      <!-- Brand Logo -->
+      <div class="flex items-center space-x-3 cursor-pointer" onclick="navigateTab('events')">
+        <div class="w-10 h-10 rounded-xl bg-[#f84464] flex items-center justify-center shadow-md shadow-[#f84464]/30">
+          <i data-lucide="ticket" class="w-5 h-5 text-white"></i>
+        </div>
+        <div>
+          <div class="flex items-center space-x-1.5">
+            <span class="font-black text-xl tracking-tight text-white">TRUE</span>
+            <span class="font-black text-xl tracking-tight text-[#f84464]">PASS</span>
+            <span class="px-1.5 py-0.2 text-[9px] font-mono font-bold bg-[#f84464]/20 text-[#f84464] rounded border border-[#f84464]/30 uppercase">EVM ID</span>
           </div>
-          <div>
-            <div class="flex items-center space-x-2">
-              <span class="font-extrabold text-lg tracking-tight bg-gradient-to-r from-white via-slate-200 to-brand-400 bg-clip-text text-transparent">TRUE PASS</span>
-              <span class="px-1.5 py-0.5 text-[10px] uppercase font-mono font-bold bg-brand-500/20 text-brand-400 rounded border border-brand-500/30">v1.0 EVM</span>
+          <p class="text-[10px] text-neutral-400 font-medium">BookMyShow Biometric Anti-Scalping</p>
+        </div>
+      </div>
+
+      <!-- Search Bar (BookMyShow Style) -->
+      <div class="hidden md:flex flex-1 max-w-xl mx-4">
+        <div class="relative w-full">
+          <i data-lucide="search" class="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+          <input
+            type="search"
+            id="global-search-input"
+            placeholder="Search for Movies, Events, Plays, Sports and Concerts..."
+            class="bms-search-input w-full pl-10 pr-4 py-2.5 rounded-xl text-xs focus:outline-none transition placeholder-neutral-500"
+          />
+        </div>
+      </div>
+
+      <!-- City Dropdown & User Status -->
+      <div class="flex items-center space-x-3 sm:space-x-4">
+        
+        <!-- City Selector Dropdown -->
+        <div class="relative">
+          <button onclick="toggleCityDropdown()" id="city-selector-btn" class="flex items-center space-x-1.5 text-xs font-semibold text-neutral-300 hover:text-white px-2.5 py-1.5 rounded-lg hover:bg-white/5 transition">
+            <i data-lucide="map-pin" class="w-3.5 h-3.5 text-[#f84464]"></i>
+            <span id="selected-city-label">Bengaluru</span>
+            <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-neutral-400"></i>
+          </button>
+
+          <!-- Dropdown Menu -->
+          <div id="city-dropdown-menu" class="hidden absolute right-0 mt-2 w-48 bms-modal-card rounded-2xl p-2 z-50 border border-[#2d3448] shadow-2xl">
+            <p class="text-[10px] font-mono uppercase text-neutral-400 px-3 py-1 font-bold">Popular Cities</p>
+            <div class="space-y-0.5">
+              <button onclick="selectCity('Bengaluru')" class="w-full text-left px-3 py-1.5 text-xs text-neutral-200 hover:text-white hover:bg-white/10 rounded-lg transition">Bengaluru</button>
+              <button onclick="selectCity('Mumbai')" class="w-full text-left px-3 py-1.5 text-xs text-neutral-200 hover:text-white hover:bg-white/10 rounded-lg transition">Mumbai</button>
+              <button onclick="selectCity('Delhi-NCR')" class="w-full text-left px-3 py-1.5 text-xs text-neutral-200 hover:text-white hover:bg-white/10 rounded-lg transition">Delhi-NCR</button>
+              <button onclick="selectCity('Hyderabad')" class="w-full text-left px-3 py-1.5 text-xs text-neutral-200 hover:text-white hover:bg-white/10 rounded-lg transition">Hyderabad</button>
+              <button onclick="selectCity('Pune')" class="w-full text-left px-3 py-1.5 text-xs text-neutral-200 hover:text-white hover:bg-white/10 rounded-lg transition">Pune</button>
+              <button onclick="selectCity('Kolkata')" class="w-full text-left px-3 py-1.5 text-xs text-neutral-200 hover:text-white hover:bg-white/10 rounded-lg transition">Kolkata</button>
+              <button onclick="selectCity('Chennai')" class="w-full text-left px-3 py-1.5 text-xs text-neutral-200 hover:text-white hover:bg-white/10 rounded-lg transition">Chennai</button>
             </div>
-            <p class="text-[11px] text-slate-400 font-mono">Biometric Bound Smart Ticketing</p>
           </div>
         </div>
 
-        <!-- Navigation Tabs -->
-        <nav class="hidden md:flex items-center space-x-1 bg-slate-900/90 border border-slate-800 rounded-xl p-1 font-medium text-sm">
-          <button id="nav-events" onclick="navigateTab('events')" class="px-4 py-1.5 rounded-lg text-white bg-brand-500/20 text-brand-400 border border-brand-500/30 transition flex items-center space-x-2">
-            <i data-lucide="calendar" class="w-4 h-4"></i>
-            <span>Events</span>
-          </button>
-          <button id="nav-biometrics" onclick="navigateTab('biometrics')" class="px-4 py-1.5 rounded-lg text-slate-400 hover:text-white transition flex items-center space-x-2 relative">
-            <i data-lucide="scan" class="w-4 h-4"></i>
-            <span>Face ID Status</span>
-            <span id="nav-bio-badge" class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-          </button>
-          <button id="nav-tickets" onclick="navigateTab('tickets')" class="px-4 py-1.5 rounded-lg text-slate-400 hover:text-white transition flex items-center space-x-2">
-            <i data-lucide="ticket" class="w-4 h-4"></i>
-            <span>My Tickets</span>
-            <span id="nav-ticket-count" class="px-1.5 py-0.2 text-[10px] font-mono bg-slate-800 text-slate-300 rounded-full">0</span>
-          </button>
-          <button id="nav-gate" onclick="navigateTab('gate')" class="px-4 py-1.5 rounded-lg text-slate-400 hover:text-white transition flex items-center space-x-2 text-purple-400 hover:text-purple-300">
-            <i data-lucide="shield-check" class="w-4 h-4 text-purple-400"></i>
-            <span>Gate Scanner</span>
-          </button>
-        </nav>
+        <!-- Supabase Database Status Pill -->
+        <button onclick="openSupabaseModal()" id="supabase-status-pill" title="Configure / View Supabase Connection" class="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs font-mono bg-white/5 border border-white/10 hover:border-emerald-500/50 transition">
+          <span class="w-2 h-2 rounded-full bg-amber-400" id="sb-status-dot"></span>
+          <span id="sb-status-label" class="text-neutral-300 text-[11px] font-sans">Supabase DB</span>
+        </button>
 
-        <!-- User Profile / Wallet Status -->
-        <div class="flex items-center space-x-3">
-          <div id="user-pill" class="flex items-center space-x-2 bg-slate-900/90 border border-slate-800 px-3 py-1.5 rounded-xl text-xs font-mono">
-            <div id="user-avatar-indicator" class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></div>
-            <span id="user-address-display" class="text-slate-300 font-semibold">0x7099...79C8</span>
-            <span id="user-face-status-pill" class="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30">Needs Face ID</span>
+        <!-- User Profile Pill or Quick Register Button -->
+        <div id="user-header-profile" class="flex items-center space-x-2">
+          <!-- Populated dynamically via JS -->
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Secondary Categories Navigation Bar -->
+    <div class="bms-header-subnav px-4 sm:px-8 py-2 flex items-center justify-between text-xs overflow-x-auto no-scrollbar">
+      <div class="flex items-center space-x-6 min-w-max">
+        <button onclick="filterCategory('All')" class="hover:text-white text-neutral-300 font-medium transition py-1 border-b-2 border-transparent hover:border-[#f84464] cat-nav-link active-cat" data-category="All">All Experiences</button>
+        <button onclick="filterCategory('Concerts & Music')" class="hover:text-white text-neutral-300 font-medium transition py-1 border-b-2 border-transparent hover:border-[#f84464] cat-nav-link" data-category="Concerts & Music">Concerts & Music</button>
+        <button onclick="filterCategory('Stand-up Comedy')" class="hover:text-white text-neutral-300 font-medium transition py-1 border-b-2 border-transparent hover:border-[#f84464] cat-nav-link" data-category="Stand-up Comedy">Stand-up Comedy</button>
+        <button onclick="filterCategory('Cricket & Live Sports')" class="hover:text-white text-neutral-300 font-medium transition py-1 border-b-2 border-transparent hover:border-[#f84464] cat-nav-link" data-category="Cricket & Live Sports">Cricket & Live Sports</button>
+        <button onclick="filterCategory('Tech & Summits')" class="hover:text-white text-neutral-300 font-medium transition py-1 border-b-2 border-transparent hover:border-[#f84464] cat-nav-link" data-category="Tech & Summits">Tech & AI Summits</button>
+        <button onclick="filterCategory('Plays & Theatre')" class="hover:text-white text-neutral-300 font-medium transition py-1 border-b-2 border-transparent hover:border-[#f84464] cat-nav-link" data-category="Plays & Theatre">Plays & Theatre</button>
+        <button onclick="filterCategory('Food & Nightlife')" class="hover:text-white text-neutral-300 font-medium transition py-1 border-b-2 border-transparent hover:border-[#f84464] cat-nav-link" data-category="Food & Nightlife">Food & Nightlife</button>
+      </div>
+
+      <!-- Action Tabs -->
+      <div class="flex items-center space-x-3 ml-4 min-w-max">
+        <button onclick="navigateTab('tickets')" class="px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-200 transition flex items-center space-x-1.5">
+          <i data-lucide="ticket" class="w-3.5 h-3.5 text-[#f84464]"></i>
+          <span>My Passes</span>
+          <span id="nav-ticket-count" class="px-1.5 py-0.2 text-[10px] font-mono bg-[#f84464] text-white rounded-full">0</span>
+        </button>
+        <button onclick="navigateTab('gate')" class="px-3 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/25 transition flex items-center space-x-1.5 font-medium">
+          <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+          <span>Turnstile Gate Scanner</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- =========================================================================
+       MAIN CONTENT CONTAINER
+       ========================================================================= -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full">
+
+    <!-- SECTION 1: ONBOARDING STEP 1 & 2 (REGISTER FIRST, THEN FACE SCAN) -->
+    <section id="section-onboarding" class="tab-section hidden max-w-2xl mx-auto py-8">
+      
+      <!-- Stepper Header -->
+      <div class="flex items-center justify-center space-x-4 mb-8">
+        <div id="step-pill-1" class="flex items-center space-x-2 px-3 py-1.5 rounded-full bg-[#f84464] text-white text-xs font-bold">
+          <span class="w-4 h-4 rounded-full bg-white text-[#f84464] flex items-center justify-center text-[10px]">1</span>
+          <span>Your Info & Interests</span>
+        </div>
+        <div class="w-8 h-0.5 bg-[#2d3448]" id="stepper-line"></div>
+        <div id="step-pill-2" class="flex items-center space-x-2 px-3 py-1.5 rounded-full bg-white/10 text-neutral-400 text-xs font-medium">
+          <span class="w-4 h-4 rounded-full bg-white/20 text-neutral-300 flex items-center justify-center text-[10px]">2</span>
+          <span>Biometric Face Scan</span>
+        </div>
+      </div>
+
+      <!-- STEP 1: LOGIN / INFORMATION FORM -->
+      <div id="onboarding-step-1" class="bms-modal-card p-6 sm:p-8 rounded-3xl border border-[#2d3448] shadow-2xl">
+        <div class="text-center mb-6">
+          <div class="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-[#f84464]/10 text-[#f84464] mb-3">
+            <i data-lucide="user-check" class="w-6 h-6"></i>
           </div>
-          <button onclick="openLoginModal()" title="Switch Account / Wallet" class="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition border border-transparent hover:border-slate-700">
-            <i data-lucide="user-cog" class="w-4 h-4"></i>
+          <h2 class="text-2xl font-bold text-white">Create Your TruePass Profile</h2>
+          <p class="text-xs text-neutral-400 mt-1 max-w-md mx-auto">
+            BookMyShow uses TruePass on-chain biometric binding to stop scalper bots. Fill in your attendee details below to begin.
+          </p>
+        </div>
+
+        <form id="onboarding-form" onsubmit="handleProceedToFaceScan(event)" class="space-y-4">
+          <!-- Full Name -->
+          <div>
+            <label class="block text-xs font-semibold text-neutral-300 mb-1">Full Name</label>
+            <input
+              type="text"
+              id="input-name"
+              required
+              placeholder="e.g. Aditya Sharma"
+              class="w-full px-4 py-2.5 rounded-xl bg-[#151924] border border-[#2d3448] text-white text-xs focus:border-[#f84464] focus:outline-none transition"
+            />
+          </div>
+
+          <!-- Phone Number -->
+          <div>
+            <label class="block text-xs font-semibold text-neutral-300 mb-1">Mobile Number (India)</label>
+            <div class="flex">
+              <span class="inline-flex items-center px-3 rounded-l-xl border border-r-0 border-[#2d3448] bg-[#1a202e] text-neutral-400 text-xs font-mono">
+                +91
+              </span>
+              <input
+                type="tel"
+                id="input-phone"
+                required
+                pattern="[0-9]{10}"
+                placeholder="9876543210"
+                class="w-full px-4 py-2.5 rounded-r-xl bg-[#151924] border border-[#2d3448] text-white text-xs font-mono focus:border-[#f84464] focus:outline-none transition"
+              />
+            </div>
+            <p class="text-[10px] text-neutral-500 mt-1">Instant SMS & WhatsApp e-ticket delivery</p>
+          </div>
+
+          <!-- City -->
+          <div>
+            <label class="block text-xs font-semibold text-neutral-300 mb-1">Current City</label>
+            <select
+              id="input-city"
+              class="w-full px-4 py-2.5 rounded-xl bg-[#151924] border border-[#2d3448] text-white text-xs focus:border-[#f84464] focus:outline-none transition"
+            >
+              <option value="Bengaluru">Bengaluru</option>
+              <option value="Mumbai">Mumbai</option>
+              <option value="Delhi-NCR">Delhi-NCR</option>
+              <option value="Hyderabad">Hyderabad</option>
+              <option value="Pune">Pune</option>
+              <option value="Kolkata">Kolkata</option>
+              <option value="Chennai">Chennai</option>
+            </select>
+          </div>
+
+          <!-- Interests / Categories -->
+          <div>
+            <label class="block text-xs font-semibold text-neutral-300 mb-2">What events are you interested in? (Select all that apply)</label>
+            <div class="flex flex-wrap gap-2" id="interest-pills-container">
+              <button type="button" onclick="toggleInterest(this, 'Concerts & Music')" class="interest-pill px-3 py-1.5 rounded-full text-xs font-medium border border-[#2d3448] bg-white/5 text-neutral-300 hover:border-[#f84464] transition">🎵 Concerts & Music</button>
+              <button type="button" onclick="toggleInterest(this, 'Stand-up Comedy')" class="interest-pill px-3 py-1.5 rounded-full text-xs font-medium border border-[#2d3448] bg-white/5 text-neutral-300 hover:border-[#f84464] transition">🎤 Stand-up Comedy</button>
+              <button type="button" onclick="toggleInterest(this, 'Cricket & Live Sports')" class="interest-pill px-3 py-1.5 rounded-full text-xs font-medium border border-[#2d3448] bg-white/5 text-neutral-300 hover:border-[#f84464] transition">🏏 Cricket & Sports</button>
+              <button type="button" onclick="toggleInterest(this, 'Tech & Summits')" class="interest-pill px-3 py-1.5 rounded-full text-xs font-medium border border-[#2d3448] bg-white/5 text-neutral-300 hover:border-[#f84464] transition">💻 Tech & AI Summits</button>
+              <button type="button" onclick="toggleInterest(this, 'Plays & Theatre')" class="interest-pill px-3 py-1.5 rounded-full text-xs font-medium border border-[#2d3448] bg-white/5 text-neutral-300 hover:border-[#f84464] transition">🎭 Plays & Theatre</button>
+              <button type="button" onclick="toggleInterest(this, 'Food & Nightlife')" class="interest-pill px-3 py-1.5 rounded-full text-xs font-medium border border-[#2d3448] bg-white/5 text-neutral-300 hover:border-[#f84464] transition">🍸 Food & Nightlife</button>
+            </div>
+          </div>
+
+          <!-- Submit Button -->
+          <div class="pt-4">
+            <button
+              type="submit"
+              class="w-full py-3.5 rounded-xl btn-bms-primary font-bold text-xs uppercase tracking-wider flex items-center justify-center space-x-2"
+            >
+              <span>Next: Set Up Biometric Face ID</span>
+              <i data-lucide="arrow-right" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- STEP 2: FACE SCANNING STUDIO -->
+      <div id="onboarding-step-2" class="hidden bms-modal-card p-6 sm:p-8 rounded-3xl border border-[#2d3448] shadow-2xl">
+        <div class="text-center mb-6">
+          <div class="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-400 mb-3">
+            <i data-lucide="scan-face" class="w-6 h-6"></i>
+          </div>
+          <h2 class="text-2xl font-bold text-white">Biometric Face ID Scan</h2>
+          <p class="text-xs text-neutral-400 mt-1 max-w-md mx-auto">
+            Your face is hashed into a secure cryptographic commitment (<code class="text-[#f84464] font-mono">bytes32</code>) saved on the blockchain. Your raw photo is never stored on the public ledger.
+          </p>
+        </div>
+
+        <!-- Camera Container -->
+        <div class="relative w-full max-w-md mx-auto aspect-[4/3] rounded-2xl overflow-hidden bg-black border-2 border-[#2d3448] shadow-inner flex items-center justify-center">
+          <video id="webcam-video" autoplay playsinline muted class="w-full h-full object-cover mirror-mode"></video>
+          <canvas id="face-canvas" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
+
+          <!-- Reticle Overlay -->
+          <div id="hud-overlay" class="absolute inset-0 pointer-events-none flex flex-col items-center justify-between p-4">
+            <div class="w-full flex justify-between items-center text-[10px] font-mono text-neutral-300">
+              <span class="flex items-center space-x-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                <span>BIOMETRIC CAMERA READY</span>
+              </span>
+              <span>128-DIM COMMITMENT</span>
+            </div>
+
+            <!-- Reticle -->
+            <div class="bms-scanner-reticle relative w-48 h-48 rounded-full flex items-center justify-center">
+              <div id="hud-status-text" class="text-xs font-mono uppercase font-bold text-white px-2 py-1 rounded bg-black/60 border border-white/20 tracking-wider">
+                Center Face in Frame
+              </div>
+            </div>
+
+            <div class="text-[10px] font-mono text-neutral-400">CLIENT-SIDE SALTED HASH</div>
+          </div>
+
+          <!-- Captured Snapshot Preview -->
+          <div id="snapshot-preview-container" class="absolute inset-0 bg-[#0f1017] hidden flex flex-col items-center justify-center p-6 text-center">
+            <div class="relative w-36 h-36 rounded-2xl overflow-hidden border-2 border-[#f84464] shadow-xl mb-3">
+              <img id="captured-snapshot-img" src="" alt="Captured Face" class="w-full h-full object-cover" />
+              <div class="absolute bottom-1 right-1 bg-emerald-500 text-black p-1 rounded-full">
+                <i data-lucide="check" class="w-3.5 h-3.5"></i>
+              </div>
+            </div>
+            <div class="text-xs font-bold text-emerald-400 flex items-center space-x-1 mb-1">
+              <i data-lucide="shield-check" class="w-4 h-4"></i>
+              <span>Face ID Bound to TruePass ID</span>
+            </div>
+            <p class="text-[10px] text-neutral-400 font-mono truncate max-w-xs" id="preview-hash-display">0x00000000000000000000000000000000</p>
+          </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
+          <button id="btn-start-camera" onclick="startCamera()" class="btn-bms-outline w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-semibold uppercase flex items-center justify-center space-x-2">
+            <i data-lucide="video" class="w-4 h-4"></i>
+            <span>Open Webcam</span>
+          </button>
+
+          <button id="btn-capture-face" onclick="captureBiometricSnapshot()" class="btn-bms-primary w-full sm:w-auto px-6 py-2.5 rounded-xl text-xs font-bold uppercase flex items-center justify-center space-x-2 disabled:opacity-50">
+            <i data-lucide="scan" class="w-4 h-4"></i>
+            <span>Capture & Generate ID</span>
+          </button>
+
+          <button onclick="useMockBiometricProfile()" class="btn-bms-outline w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-medium text-neutral-300 flex items-center justify-center space-x-2" title="Use synthetic face if webcam is unavailable">
+            <i data-lucide="sparkles" class="w-4 h-4 text-amber-400"></i>
+            <span>Demo Face Profile</span>
+          </button>
+        </div>
+
+        <!-- Finish Button -->
+        <div id="onboarding-complete-container" class="hidden mt-6 pt-6 border-t border-[#2d3448] text-center">
+          <button onclick="finishOnboardingAndExplore()" class="btn-bms-primary w-full py-3.5 rounded-xl font-extrabold text-xs uppercase tracking-wider flex items-center justify-center space-x-2">
+            <i data-lucide="compass" class="w-4 h-4"></i>
+            <span>Complete Setup & Explore Experiences</span>
           </button>
         </div>
 
       </div>
-    </header>
 
-    <!-- Main Content Container -->
-    <main class="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+    </section>
 
-      <!-- Mandatory Biometric Enrollment Banner (if not enrolled) -->
-      <div id="enrollment-alert" class="mb-8 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-brand-500/10 to-transparent border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg shadow-amber-500/5">
-        <div class="flex items-start space-x-4">
-          <div class="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 flex-shrink-0 mt-0.5">
-            <i data-lucide="scan-face" class="w-5 h-5"></i>
-          </div>
-          <div>
-            <h3 class="font-bold text-white text-base">Step 1 Required: Biometric Face Binding</h3>
-            <p class="text-slate-400 text-xs sm:text-sm mt-0.5">
-              To prevent bot scalping and fraudulent resale, every True Pass ticket is cryptographically bound to your facial template. Complete your quick 10-second scan before checkout.
-            </p>
+    <!-- SECTION 2: BOOKMYSHOW EVENT MARKETPLACE -->
+    <section id="section-events" class="tab-section">
+      
+      <!-- BookMyShow Hero Banner Carousel -->
+      <div class="bms-hero-banner relative mb-8 p-6 sm:p-10 flex flex-col md:flex-row items-center justify-between gap-6 shadow-2xl">
+        <div class="max-w-xl z-10">
+          <span class="px-2.5 py-1 rounded-md text-[10px] font-mono font-bold bg-[#f84464] text-white uppercase tracking-wider">
+            FEATURED EXPERIENCE • BIOMETRIC BOUND
+          </span>
+          <h1 class="text-3xl sm:text-4xl font-black text-white tracking-tight mt-2 leading-tight">
+            Coldplay: Music of the Spheres Tour 2027
+          </h1>
+          <p class="text-neutral-300 text-xs sm:text-sm mt-2 leading-relaxed">
+            D.Y. Patil Stadium, Mumbai • Strict 100% On-Chain Biometric Verification. Resale price capped at 10% maximum to eliminate black-market scalping.
+          </p>
+          <div class="mt-4 flex flex-wrap items-center gap-3">
+            <span class="text-xl font-extrabold text-white">₹3,500 onwards</span>
+            <button onclick="handleInitiateBuyTicket(1001)" class="btn-bms-primary px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center space-x-1.5">
+              <span>Book Pass Now</span>
+              <i data-lucide="arrow-right" class="w-4 h-4"></i>
+            </button>
           </div>
         </div>
-        <button onclick="navigateTab('biometrics')" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-bold text-xs uppercase tracking-wider transition shadow-lg shadow-amber-500/20 flex-shrink-0 flex items-center justify-center space-x-2">
-          <i data-lucide="camera" class="w-4 h-4"></i>
-          <span>Enroll Face ID Now</span>
+        <div class="relative w-full md:w-80 h-48 rounded-2xl overflow-hidden border border-white/20 shadow-xl flex-shrink-0">
+          <img src="https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=800&q=80" alt="Hero Concert" class="w-full h-full object-cover" />
+          <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
+          <div class="absolute bottom-3 left-3 text-[11px] font-mono text-white flex items-center space-x-1.5">
+            <i data-lucide="shield-check" class="w-4 h-4 text-emerald-400"></i>
+            <span>TruePass Identity Protected</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section Title & Subheading -->
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 class="text-2xl font-bold text-white tracking-tight" id="marketplace-heading">Top Events in Bengaluru</h2>
+          <p class="text-xs text-neutral-400 mt-0.5">Official ticket pool • 100% Fair price & Anti-Scalp protected</p>
+        </div>
+        <span class="text-xs font-mono text-neutral-400 bg-white/5 border border-white/10 px-3 py-1.5 rounded-lg flex items-center space-x-1.5">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span>TruePass Relayer: Active</span>
+        </span>
+      </div>
+
+      <!-- Events Grid -->
+      <div id="events-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <!-- Dynamically populated via JS -->
+      </div>
+    </section>
+
+    <!-- SECTION 3: MY PASSES (BOOKMYSHOW M-TICKET STYLE) -->
+    <section id="section-tickets" class="tab-section hidden">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
+        <div>
+          <span class="text-xs font-mono uppercase tracking-widest text-[#f84464] font-bold">Attendee Digital Vault</span>
+          <h1 class="text-3xl font-extrabold tracking-tight text-white mt-1">My Bookings & TruePasses</h1>
+          <p class="text-slate-400 text-sm mt-1">Official BookMyShow M-Tickets cryptographically bound to your facial template.</p>
+        </div>
+        <button onclick="navigateTab('events')" class="btn-bms-primary px-4 py-2 rounded-xl text-xs font-semibold flex items-center space-x-1.5 self-start sm:self-auto">
+          <i data-lucide="plus" class="w-4 h-4"></i>
+          <span>Explore More Events</span>
         </button>
       </div>
 
-      <!-- SECTION 1: EVENT MARKETPLACE -->
-      <section id="section-events" class="tab-section">
-        <div class="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
-          <div>
-            <span class="text-xs font-mono uppercase tracking-widest text-brand-400 font-bold">Official Ticketing Pool</span>
-            <h1 class="text-3xl font-extrabold tracking-tight text-white mt-1">Upcoming Verified Events</h1>
-            <p class="text-slate-400 text-sm mt-1">Every ticket is minted as an ERC-721 token bound to your biometric commitment hash.</p>
-          </div>
-          <div class="flex items-center space-x-2">
-            <span class="text-xs font-mono text-slate-400 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg flex items-center space-x-1.5">
-              <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-              <span>Razorpay Test Gateway Active</span>
-            </span>
-          </div>
-        </div>
-
-        <!-- Event Cards Grid -->
-        <div id="events-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
-          <!-- Dynamically populated via JS -->
-        </div>
-      </section>
-
-      <!-- SECTION 2: BIOMETRIC ENROLLMENT STUDIO -->
-      <section id="section-biometrics" class="tab-section hidden">
-        <div class="max-w-3xl mx-auto">
-          <div class="text-center mb-8">
-            <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-brand-500/10 border border-brand-500/30 text-brand-400 mb-4">
-              <i data-lucide="scan-face" class="w-7 h-7"></i>
-            </div>
-            <h1 class="text-3xl font-black text-white tracking-tight">Biometric Identity Enrollment</h1>
-            <p class="text-slate-400 text-sm mt-2 max-w-xl mx-auto">
-              Your face template is hashed client-side with a salted cryptographic commitment (<code class="text-brand-400 font-mono">bytes32</code>). Your raw photo is never stored on the public blockchain.
-            </p>
-          </div>
-
-          <!-- Biometric Camera & Scan Card -->
-          <div class="bg-cyber-panel border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
-            
-            <!-- Video & Scanner Canvas Overlay -->
-            <div class="relative w-full max-w-md mx-auto aspect-[4/3] rounded-2xl overflow-hidden bg-black border-2 border-slate-800 shadow-inner flex items-center justify-center">
-              <video id="webcam-video" autoplay playsinline muted class="w-full h-full object-cover mirror-mode"></video>
-              <canvas id="face-canvas" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
-
-              <!-- Futuristic HUD Overlays -->
-              <div id="hud-overlay" class="absolute inset-0 pointer-events-none flex flex-col items-center justify-between p-4">
-                <div class="w-full flex justify-between items-center text-[10px] font-mono text-cyber-cyan/80">
-                  <span class="flex items-center space-x-1">
-                    <span class="w-1.5 h-1.5 rounded-full bg-cyber-cyan animate-ping"></span>
-                    <span>FACE-NET AI ENGINE v4.2</span>
-                  </span>
-                  <span id="hud-fps">FPS: 30</span>
-                </div>
-
-                <!-- Center Targeting Reticle -->
-                <div class="scanner-reticle relative w-48 h-48 sm:w-56 sm:h-56 rounded-full border border-cyber-cyan/40 flex items-center justify-center">
-                  <div class="scanner-sweep absolute inset-0 rounded-full border-t-2 border-cyber-cyan"></div>
-                  <div class="corner corner-tl"></div>
-                  <div class="corner corner-tr"></div>
-                  <div class="corner corner-bl"></div>
-                  <div class="corner corner-br"></div>
-                  <div id="hud-status-text" class="text-xs font-mono uppercase font-bold text-cyber-cyan px-2 py-1 rounded bg-black/60 border border-cyber-cyan/30 tracking-wider">
-                    Position Face in Frame
-                  </div>
-                </div>
-
-                <div class="w-full flex justify-between items-center text-[10px] font-mono text-slate-400">
-                  <span>SECURE ENCLAVE ACTIVE</span>
-                  <span id="hud-vectors">VECTORS: 128-DIM</span>
-                </div>
-              </div>
-
-              <!-- Captured Snapshot Preview (Hidden initially) -->
-              <div id="snapshot-preview-container" class="absolute inset-0 bg-cyber-dark hidden flex flex-col items-center justify-center p-6 text-center">
-                <div class="relative w-40 h-40 rounded-2xl overflow-hidden border-2 border-brand-400 shadow-xl mb-4">
-                  <img id="captured-snapshot-img" src="" alt="Captured Face" class="w-full h-full object-cover" />
-                  <div class="absolute bottom-1 right-1 bg-emerald-500 text-black p-1 rounded-full">
-                    <i data-lucide="check" class="w-3.5 h-3.5"></i>
-                  </div>
-                </div>
-                <div class="text-xs font-mono text-emerald-400 font-bold flex items-center space-x-1.5 mb-1">
-                  <i data-lucide="shield-check" class="w-4 h-4"></i>
-                  <span>Facial Biometrics Verified & Salted</span>
-                </div>
-                <p class="text-[11px] text-slate-400 font-mono truncate max-w-xs" id="preview-hash-display">0x00000000000000000000000000000000</p>
-              </div>
-            </div>
-
-            <!-- Action Controls -->
-            <div class="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
-              <button id="btn-start-camera" onclick="startCamera()" class="w-full sm:w-auto px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs tracking-wide uppercase transition border border-slate-700 flex items-center justify-center space-x-2">
-                <i data-lucide="video" class="w-4 h-4"></i>
-                <span>Open Webcam</span>
-              </button>
-
-              <button id="btn-capture-face" onclick="captureBiometricSnapshot()" class="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-brand-500 to-cyber-cyan hover:from-brand-400 hover:to-cyan-400 text-black font-extrabold text-xs tracking-wider uppercase transition shadow-lg shadow-brand-500/20 flex items-center justify-center space-x-2 disabled:opacity-50">
-                <i data-lucide="scan" class="w-4 h-4"></i>
-                <span>Capture & Hash Face</span>
-              </button>
-
-              <button id="btn-mock-face" onclick="useMockBiometricProfile()" class="w-full sm:w-auto px-4 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 font-medium text-xs tracking-wide transition border border-slate-800 flex items-center justify-center space-x-2" title="Use synthetic facial vector if webcam is unavailable">
-                <i data-lucide="sparkles" class="w-4 h-4 text-amber-400"></i>
-                <span>Demo Face Profile</span>
-              </button>
-            </div>
-
-            <!-- Current Biometric ID Info Box -->
-            <div id="enrolled-status-card" class="mt-6 pt-6 border-t border-slate-800/80">
-              <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div class="flex items-center space-x-3">
-                  <div id="enrolled-avatar" class="w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center overflow-hidden">
-                    <i data-lucide="user" class="w-6 h-6 text-slate-500"></i>
-                  </div>
-                  <div>
-                    <div class="flex items-center space-x-2">
-                      <span class="text-xs text-slate-400 font-mono">Biometric Commitment Hash</span>
-                      <span id="enrolled-badge" class="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-amber-500/20 text-amber-300 border border-amber-500/30">Not Registered</span>
-                    </div>
-                    <p id="enrolled-hash" class="text-xs font-mono text-slate-200 mt-0.5 break-all">None</p>
-                  </div>
-                </div>
-                <button onclick="resetBiometrics()" class="text-xs text-rose-400 hover:text-rose-300 hover:underline flex items-center space-x-1 flex-shrink-0">
-                  <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
-                  <span>Re-scan</span>
-                </button>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      </section>
-
-      <!-- SECTION 3: MY TICKETS (PASS WALLET) -->
-      <section id="section-tickets" class="tab-section hidden">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
-          <div>
-            <span class="text-xs font-mono uppercase tracking-widest text-brand-400 font-bold">Attendee Digital Vault</span>
-            <h1 class="text-3xl font-extrabold tracking-tight text-white mt-1">My Biometric Tickets</h1>
-            <p class="text-slate-400 text-sm mt-1">Each ticket contains an on-chain token ID and an encoded QR code containing your biometric commitment.</p>
-          </div>
-          <button onclick="navigateTab('events')" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium text-xs transition border border-slate-700 flex items-center space-x-2 self-start sm:self-auto">
-            <i data-lucide="plus" class="w-4 h-4 text-brand-400"></i>
-            <span>Buy More Tickets</span>
-          </button>
-        </div>
-
-        <!-- Tickets Container -->
-        <div id="tickets-list" class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <!-- Dynamically populated tickets -->
-        </div>
-
-        <!-- Empty State -->
-        <div id="tickets-empty" class="text-center py-16 bg-cyber-panel border border-slate-800/80 rounded-3xl p-8 max-w-xl mx-auto">
-          <div class="w-16 h-16 rounded-2xl bg-slate-800/80 border border-slate-700 flex items-center justify-center text-slate-500 mx-auto mb-4">
-            <i data-lucide="ticket-x" class="w-8 h-8"></i>
-          </div>
-          <h3 class="text-lg font-bold text-white">No Tickets Found</h3>
-          <p class="text-slate-400 text-xs sm:text-sm mt-1 max-w-sm mx-auto">
-            You haven't purchased any tickets yet. Pick an upcoming event and checkout with Razorpay.
-          </p>
-          <button onclick="navigateTab('events')" class="mt-6 px-6 py-2.5 rounded-xl bg-gradient-to-r from-brand-500 to-cyber-cyan text-black font-bold text-xs uppercase tracking-wider transition shadow-lg shadow-brand-500/20">
-            Browse Event Marketplace
-          </button>
-        </div>
-      </section>
-
-      <!-- SECTION 4: GATE SCANNER (VENUE ENTRY DEMO) -->
-      <section id="section-gate" class="tab-section hidden">
-        <div class="max-w-4xl mx-auto">
-          <div class="text-center mb-8">
-            <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-purple-500/10 border border-purple-500/30 text-purple-400 mb-4">
-              <i data-lucide="shield-check" class="w-7 h-7"></i>
-            </div>
-            <h1 class="text-3xl font-black text-white tracking-tight">Venue Gatekeeper Scanner</h1>
-            <p class="text-slate-400 text-sm mt-2 max-w-xl mx-auto">
-              Simulate the physical entry turnstile: scans the ticket QR code, extracts the on-chain biometric hash, and verifies it live against the attendee's face.
-            </p>
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            
-            <!-- Step A: QR Code Input / Selection -->
-            <div class="bg-cyber-panel border border-slate-800 rounded-3xl p-6 flex flex-col justify-between">
-              <div>
-                <div class="flex items-center space-x-2 text-xs font-mono text-purple-400 uppercase font-bold mb-3">
-                  <span class="w-5 h-5 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-300">1</span>
-                  <span>Select Ticket to Scan at Turnstile</span>
-                </div>
-                <div class="space-y-3" id="gate-ticket-selector">
-                  <!-- Populated dynamically with user's tickets -->
-                </div>
-              </div>
-
-              <!-- Selected Ticket Preview Pill -->
-              <div id="gate-selected-preview" class="mt-6 p-4 rounded-2xl bg-slate-900/90 border border-slate-800 text-xs font-mono space-y-2">
-                <div class="text-slate-400">Selected Ticket: <span id="gate-preview-title" class="text-white font-bold">None</span></div>
-                <div class="text-slate-400">Biometric Hash: <span id="gate-preview-hash" class="text-brand-400 break-all">None</span></div>
-                <div class="text-slate-400">Current Status: <span id="gate-preview-status" class="px-2 py-0.5 rounded text-[10px] bg-slate-800 text-slate-300">Pending</span></div>
-              </div>
-            </div>
-
-            <!-- Step B: Live Face Verification at Gate -->
-            <div class="bg-cyber-panel border border-slate-800 rounded-3xl p-6 flex flex-col items-center justify-between">
-              <div class="w-full">
-                <div class="flex items-center space-x-2 text-xs font-mono text-cyber-cyan uppercase font-bold mb-3">
-                  <span class="w-5 h-5 rounded-full bg-cyber-cyan/20 flex items-center justify-center text-cyber-cyan">2</span>
-                  <span>Live Turnstile Face Match</span>
-                </div>
-
-                <div class="relative aspect-square w-full max-w-[260px] mx-auto rounded-2xl overflow-hidden bg-black border-2 border-slate-800 flex items-center justify-center">
-                  <video id="gate-webcam" autoplay playsinline muted class="w-full h-full object-cover mirror-mode"></video>
-                  <canvas id="gate-canvas" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
-
-                  <!-- Scanner Target -->
-                  <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div class="w-40 h-40 rounded-full border-2 border-dashed border-purple-400/60 animate-spin-slow"></div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Simulation Match Buttons -->
-              <div class="w-full mt-6 space-y-2">
-                <button onclick="simulateGateVerification(true)" class="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-black font-extrabold text-xs tracking-wider uppercase transition shadow-lg shadow-emerald-500/20 flex items-center justify-center space-x-2">
-                  <i data-lucide="user-check" class="w-4 h-4"></i>
-                  <span>Simulate Real Attendee (Valid Match)</span>
-                </button>
-                <button onclick="simulateGateVerification(false)" class="w-full py-2.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 font-bold text-xs tracking-wider uppercase transition flex items-center justify-center space-x-2">
-                  <i data-lucide="user-x" class="w-4 h-4"></i>
-                  <span>Simulate Fraudster / Imposter (Mismatch)</span>
-                </button>
-              </div>
-            </div>
-
-          </div>
-
-          <!-- Gate Verification Result Modal / Alert Box -->
-          <div id="gate-result-box" class="mt-6 hidden p-6 rounded-3xl border transition-all text-center">
-            <!-- Dynamically populated upon scan -->
-          </div>
-        </div>
-      </section>
-
-    </main>
-
-    <!-- Footer -->
-    <footer class="border-t border-slate-800/80 py-6 text-center text-xs text-slate-500 font-mono">
-      <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-        <span>True Pass Web3 Ticketing © 2026. Built with OpenZeppelin ERC-721 & Razorpay.</span>
-        <span class="flex items-center space-x-2 text-slate-400">
-          <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-          <span>EVM Relayer: Active</span>
-        </span>
+      <!-- Passes Container -->
+      <div id="tickets-list" class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <!-- Dynamically populated via JS -->
       </div>
-    </footer>
-  </div>
 
-  <!-- CHECKOUT MODAL (RAZORPAY SIMULATION & BIOMETRIC BINDING) -->
-  <div id="checkout-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-cyber-panel border border-slate-700/80 rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl relative overflow-hidden animate-scale-up">
+      <!-- Empty State -->
+      <div id="tickets-empty" class="text-center py-16 bms-modal-card rounded-3xl p-8 max-w-xl mx-auto border border-[#2d3448]">
+        <div class="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-neutral-400 mx-auto mb-4">
+          <i data-lucide="ticket-x" class="w-8 h-8"></i>
+        </div>
+        <h3 class="text-lg font-bold text-white">No Booked Passes Yet</h3>
+        <p class="text-slate-400 text-xs sm:text-sm mt-1 max-w-sm mx-auto">
+          Pick an upcoming concert, comedy show, or match and checkout in ₹ Rupees via Razorpay/UPI.
+        </p>
+        <button onclick="navigateTab('events')" class="mt-6 px-6 py-2.5 rounded-xl btn-bms-primary font-bold text-xs uppercase tracking-wider">
+          Browse Top Events
+        </button>
+      </div>
+    </section>
+
+    <!-- SECTION 4: GATE SCANNER (VENUE ENTRY DEMO) -->
+    <section id="section-gate" class="tab-section hidden">
+      <div class="max-w-4xl mx-auto">
+        <div class="text-center mb-8">
+          <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 mb-4">
+            <i data-lucide="shield-check" class="w-7 h-7"></i>
+          </div>
+          <h1 class="text-3xl font-black text-white tracking-tight">Turnstile Gatekeeper Scanner</h1>
+          <p class="text-slate-400 text-sm mt-2 max-w-xl mx-auto">
+            Simulate the physical venue turnstile: scans the ticket QR code, extracts the on-chain biometric hash, and verifies it against the live attendee's face.
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          
+          <!-- Step A: QR Code Input / Selection -->
+          <div class="bms-modal-card p-6 rounded-3xl flex flex-col justify-between border border-[#2d3448]">
+            <div>
+              <div class="flex items-center space-x-2 text-xs font-mono text-neutral-300 uppercase font-bold mb-3">
+                <span class="w-5 h-5 rounded-full bg-[#f84464] flex items-center justify-center text-white">1</span>
+                <span>Select Pass to Scan at Turnstile</span>
+              </div>
+              <div class="space-y-3" id="gate-ticket-selector">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+
+            <!-- Selected Ticket Preview Pill -->
+            <div id="gate-selected-preview" class="mt-6 p-4 rounded-2xl bg-[#141824] border border-[#2d3448] text-xs font-mono space-y-2">
+              <div class="text-slate-400">Selected Pass: <span id="gate-preview-title" class="text-white font-bold">None</span></div>
+              <div class="text-slate-400">On-Chain TruePass ID: <span id="gate-preview-token" class="text-[#f84464] font-bold">None</span></div>
+              <div class="text-slate-400">Biometric Hash: <span id="gate-preview-hash" class="text-neutral-300 break-all">None</span></div>
+              <div class="text-slate-400">Entry Status: <span id="gate-preview-status" class="px-2 py-0.5 rounded text-[10px] bg-slate-800 text-slate-300">Pending</span></div>
+            </div>
+          </div>
+
+          <!-- Step B: Live Face Verification at Gate -->
+          <div class="bms-modal-card p-6 rounded-3xl flex flex-col items-center justify-between border border-[#2d3448]">
+            <div class="w-full">
+              <div class="flex items-center space-x-2 text-xs font-mono text-neutral-300 uppercase font-bold mb-3">
+                <span class="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center text-black font-bold">2</span>
+                <span>Turnstile Face Match</span>
+              </div>
+
+              <div class="relative aspect-square w-full max-w-[260px] mx-auto rounded-2xl overflow-hidden bg-black border-2 border-[#2d3448] flex items-center justify-center">
+                <video id="gate-webcam" autoplay playsinline muted class="w-full h-full object-cover mirror-mode"></video>
+                <canvas id="gate-canvas" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
+
+                <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div class="w-40 h-40 rounded-full border-2 border-dashed border-[#f84464]/60 animate-spin-slow"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Simulation Match Buttons -->
+            <div class="w-full mt-6 space-y-2">
+              <button onclick="handleTurnstileCheckIn(true)" class="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs tracking-wider uppercase transition shadow-lg shadow-emerald-500/20 flex items-center justify-center space-x-2">
+                <i data-lucide="user-check" class="w-4 h-4"></i>
+                <span>Simulate Real Attendee (Valid Match)</span>
+              </button>
+              <button onclick="handleTurnstileCheckIn(false)" class="w-full py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold text-xs tracking-wider uppercase transition flex items-center justify-center space-x-2">
+                <i data-lucide="user-x" class="w-4 h-4"></i>
+                <span>Simulate Scalper / Imposter (Mismatch)</span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Result Box -->
+        <div id="gate-result-box" class="mt-6 hidden p-6 rounded-3xl border transition-all text-center">
+          <!-- Populated upon scan -->
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- =========================================================================
+       CHECKOUT MODAL (BOOKMYSHOW + RAZORPAY INR PAYMENT)
+       ========================================================================= -->
+  <div id="checkout-modal" class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bms-modal-card border border-[#2d3448] rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl relative overflow-hidden">
       
-      <button onclick="closeCheckoutModal()" class="absolute top-5 right-5 text-slate-400 hover:text-white p-1 rounded-lg">
+      <button onclick="closeCheckoutModal()" class="absolute top-5 right-5 text-neutral-400 hover:text-white p-1 rounded-lg">
         <i data-lucide="x" class="w-5 h-5"></i>
       </button>
 
       <div class="flex items-center space-x-3 mb-6">
-        <div class="w-12 h-12 rounded-2xl bg-brand-500/20 border border-brand-500/40 flex items-center justify-center text-brand-400">
+        <div class="w-12 h-12 rounded-2xl bg-[#f84464]/20 border border-[#f84464]/40 flex items-center justify-center text-[#f84464]">
           <i data-lucide="credit-card" class="w-6 h-6"></i>
         </div>
         <div>
-          <span class="text-xs font-mono uppercase text-brand-400 font-bold">Secure Razorpay Checkout</span>
+          <span class="text-xs font-mono uppercase text-[#f84464] font-bold">Secure BookMyShow Checkout</span>
           <h2 class="text-xl font-bold text-white" id="modal-event-title">Event Title</h2>
         </div>
       </div>
 
-      <!-- Ticket Price Summary -->
-      <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 mb-6 space-y-2 text-xs font-mono">
-        <div class="flex justify-between text-slate-400">
+      <!-- Ticket Price Summary (Rupees Only!) -->
+      <div class="bg-[#151924] border border-[#2d3448] rounded-2xl p-4 mb-5 space-y-2 text-xs">
+        <div class="flex justify-between text-neutral-400">
           <span>Ticket Tier</span>
           <span class="text-white font-semibold" id="modal-event-tier">VIP Admission</span>
         </div>
-        <div class="flex justify-between text-slate-400">
+        <div class="flex justify-between text-neutral-400">
           <span>Venue & Date</span>
           <span class="text-white" id="modal-event-date">Date</span>
         </div>
-        <div class="flex justify-between text-slate-400 pt-2 border-t border-slate-800 text-sm">
-          <span class="font-bold text-white">Total Amount</span>
-          <span class="font-bold text-brand-400" id="modal-event-price">₹2,499</span>
+        <div class="flex justify-between text-neutral-400">
+          <span>Ticket Price</span>
+          <span class="text-white font-mono" id="modal-base-price">₹2,499</span>
+        </div>
+        <div class="flex justify-between text-neutral-400">
+          <span>Convenience Fee + GST (18%)</span>
+          <span class="text-white font-mono" id="modal-fee-price">₹150</span>
+        </div>
+        <div class="flex justify-between text-neutral-300 pt-2 border-t border-[#2d3448] text-sm">
+          <span class="font-bold text-white">Total Amount (INR)</span>
+          <span class="font-extrabold text-[#f84464]" id="modal-event-price">₹2,649</span>
+        </div>
+      </div>
+
+      <!-- Payment Method Selection (Rupees / Indian Payment Gateways) -->
+      <div class="mb-5">
+        <label class="block text-xs font-semibold text-neutral-300 mb-2">Select Payment Method</label>
+        <div class="grid grid-cols-3 gap-2">
+          <label class="cursor-pointer border border-[#f84464] bg-[#f84464]/10 rounded-xl p-2.5 flex flex-col items-center justify-center text-center">
+            <input type="radio" name="paymethod" value="upi" checked class="hidden" />
+            <i data-lucide="smartphone" class="w-4 h-4 text-[#f84464] mb-1"></i>
+            <span class="text-[11px] font-bold text-white">UPI / GPay</span>
+          </label>
+          <label class="cursor-pointer border border-[#2d3448] bg-white/5 hover:border-neutral-500 rounded-xl p-2.5 flex flex-col items-center justify-center text-center">
+            <input type="radio" name="paymethod" value="card" class="hidden" />
+            <i data-lucide="credit-card" class="w-4 h-4 text-neutral-400 mb-1"></i>
+            <span class="text-[11px] font-medium text-neutral-300">Cards</span>
+          </label>
+          <label class="cursor-pointer border border-[#2d3448] bg-white/5 hover:border-neutral-500 rounded-xl p-2.5 flex flex-col items-center justify-center text-center">
+            <input type="radio" name="paymethod" value="netbanking" class="hidden" />
+            <i data-lucide="landmark" class="w-4 h-4 text-neutral-400 mb-1"></i>
+            <span class="text-[11px] font-medium text-neutral-300">NetBanking</span>
+          </label>
         </div>
       </div>
 
       <!-- Biometric Attachment Preview -->
-      <div class="bg-brand-950/40 border border-brand-500/30 rounded-2xl p-4 mb-6">
+      <div class="bg-[#151924] border border-emerald-500/30 rounded-2xl p-4 mb-6">
         <div class="flex items-center space-x-3">
-          <div class="relative w-12 h-12 rounded-xl overflow-hidden border border-brand-400/80 flex-shrink-0 bg-black">
+          <div class="relative w-12 h-12 rounded-xl overflow-hidden border border-emerald-400 flex-shrink-0 bg-black">
             <img id="modal-attendee-face" src="" alt="Face" class="w-full h-full object-cover" />
             <div class="absolute bottom-0.5 right-0.5 bg-emerald-500 text-black p-0.5 rounded-full text-[8px]">
               <i data-lucide="check" class="w-2.5 h-2.5"></i>
@@ -438,61 +761,100 @@
           </div>
           <div class="overflow-hidden">
             <div class="flex items-center space-x-1.5">
-              <i data-lucide="lock" class="w-3.5 h-3.5 text-brand-400"></i>
-              <span class="text-xs font-bold text-white">Biometric Commitment Bound</span>
+              <i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-400"></i>
+              <span class="text-xs font-bold text-white">TruePass On-Chain Identity Anchor</span>
             </div>
-            <p class="text-[10px] font-mono text-brand-300/80 truncate mt-0.5" id="modal-attendee-hash">0x00000000000000000000</p>
-            <p class="text-[10px] text-slate-400">This face will be cryptographically encoded into the ticket QR.</p>
+            <p class="text-[10px] font-mono text-emerald-300 truncate mt-0.5" id="modal-attendee-hash">0x00000000000000000000</p>
+            <p class="text-[10px] text-neutral-400">Your face is registered on-chain with your pass to prevent scalping.</p>
           </div>
         </div>
       </div>
 
-      <!-- Payment Buttons -->
-      <button id="btn-confirm-payment" onclick="executeRazorpayPayment()" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-brand-500 via-teal-400 to-cyber-cyan hover:opacity-95 text-black font-extrabold text-sm uppercase tracking-wider transition shadow-lg shadow-brand-500/30 flex items-center justify-center space-x-2">
-        <i data-lucide="shield-check" class="w-4 h-4"></i>
-        <span>Pay with Razorpay & Mint Ticket</span>
+      <!-- Confirm Payment Button -->
+      <button id="btn-confirm-payment" onclick="executeRazorpayPayment()" class="w-full py-3.5 rounded-xl btn-bms-primary font-black text-sm uppercase tracking-wider flex items-center justify-center space-x-2">
+        <i data-lucide="lock" class="w-4 h-4"></i>
+        <span id="btn-pay-label">Pay ₹2,649 & Issue TruePass</span>
       </button>
 
       <!-- Processing State -->
       <div id="payment-processing" class="hidden text-center py-4 space-y-2">
-        <div class="inline-block w-8 h-8 border-4 border-brand-400 border-t-transparent rounded-full animate-spin"></div>
-        <p class="text-xs font-mono text-brand-400 font-semibold" id="processing-status-text">Capturing Razorpay Payment...</p>
-        <p class="text-[11px] text-slate-400">Relayer signing on-chain mintTicket transaction...</p>
+        <div class="inline-block w-8 h-8 border-4 border-[#f84464] border-t-transparent rounded-full animate-spin"></div>
+        <p class="text-xs font-mono text-white font-semibold" id="processing-status-text">Capturing Razorpay Payment...</p>
+        <p class="text-[11px] text-slate-400">Relayer anchoring TruePass ID & Biometric Hash on-chain...</p>
       </div>
 
     </div>
   </div>
 
-  <!-- LOGIN / WALLET MODAL -->
-  <div id="login-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-cyber-panel border border-slate-700/80 rounded-3xl max-w-sm w-full p-6 shadow-2xl relative">
-      <button onclick="closeLoginModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white p-1">
-        <i data-lucide="x" class="w-4 h-4"></i>
+  <!-- SUPABASE DATABASE SETTINGS MODAL -->
+  <div id="supabase-modal" class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bms-modal-card border border-[#2d3448] rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl relative">
+      <button onclick="closeSupabaseModal()" class="absolute top-5 right-5 text-neutral-400 hover:text-white p-1 rounded-lg">
+        <i data-lucide="x" class="w-5 h-5"></i>
       </button>
-      <h3 class="text-lg font-bold text-white mb-2">Attendee Profile</h3>
-      <p class="text-xs text-slate-400 mb-4">Set your attendee display name and EVM wallet address for ticket receipt.</p>
-      
-      <div class="space-y-3 mb-6">
-        <div>
-          <label class="block text-xs font-mono text-slate-400 mb-1">Attendee Name</label>
-          <input type="text" id="input-username" value="Alex Vance" class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs font-mono focus:border-brand-500 focus:outline-none" />
+
+      <div class="flex items-center space-x-3 mb-5">
+        <div class="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+          <i data-lucide="database" class="w-5 h-5"></i>
         </div>
         <div>
-          <label class="block text-xs font-mono text-slate-400 mb-1">Attendee Wallet (0x...)</label>
-          <input type="text" id="input-wallet" value="0x70997970C51812dc3A010C7d01b50e0d17dc79C8" class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs font-mono focus:border-brand-500 focus:outline-none" />
+          <h3 class="text-lg font-bold text-white">Supabase Cloud Database</h3>
+          <p class="text-xs text-neutral-400">Directly syncs profiles and tickets with your friend's turnstile scanner.</p>
         </div>
       </div>
 
-      <button onclick="saveUserProfile()" class="w-full py-2.5 rounded-xl bg-brand-500 text-black font-bold text-xs uppercase tracking-wider">
-        Save Profile
-      </button>
+      <div class="space-y-4 mb-6 text-xs">
+        <div>
+          <label class="block font-semibold text-neutral-300 mb-1">Supabase Project URL</label>
+          <input
+            type="url"
+            id="sb-input-url"
+            placeholder="https://xyzcompany.supabase.co"
+            class="w-full px-3.5 py-2.5 rounded-xl bg-[#151924] border border-[#2d3448] text-white text-xs font-mono focus:border-emerald-500 focus:outline-none"
+          />
+        </div>
+        <div>
+          <label class="block font-semibold text-neutral-300 mb-1">Anon / Public API Key</label>
+          <input
+            type="password"
+            id="sb-input-key"
+            placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+            class="w-full px-3.5 py-2.5 rounded-xl bg-[#151924] border border-[#2d3448] text-white text-xs font-mono focus:border-emerald-500 focus:outline-none"
+          />
+        </div>
+        <div id="sb-test-status" class="hidden p-3 rounded-xl text-xs font-mono"></div>
+      </div>
+
+      <div class="flex items-center space-x-2">
+        <button onclick="handleSaveSupabaseConfig()" class="flex-1 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs uppercase tracking-wider transition">
+          Save & Connect
+        </button>
+        <button onclick="handleTestSupabaseConnection()" class="px-4 py-3 rounded-xl btn-bms-outline text-xs font-bold transition">
+          Test
+        </button>
+      </div>
+
+      <p class="text-[10px] text-neutral-500 text-center mt-3">
+        Credentials are saved so all tickets and faces are stored directly in your Supabase tables.
+      </p>
     </div>
   </div>
+
+  <!-- Footer -->
+  <footer class="border-t border-[#2d3448] py-8 text-center text-xs text-neutral-500 font-mono mt-12 bg-[#171b26]">
+    <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <span>BookMyShow TruePass Biometric Protocol © 2026. Controlled resale with 10% maximum price cap.</span>
+      <span class="flex items-center space-x-2 text-neutral-400">
+        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <span>EVM Relayer Active (Gasless for Attendees)</span>
+      </span>
+    </div>
+  </footer>
 
   <!-- Application Logic -->
   <script src="app.js"></script>
   <script>
-    lucide.createIcons();
+    if (typeof lucide !== "undefined") lucide.createIcons();
   </script>
 </body>
 </html>
