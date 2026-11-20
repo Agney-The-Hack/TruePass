@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioVision AI - Facial Recognition System</title>
+    <!-- Tailwind CSS CDN for utility classes -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        cyber: {
+                            500: '#10b981',
+                            glow: '#06b6d4'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Custom Cyber-Tech Styles -->
+    <link rel="stylesheet" href="css/styles.css">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Supabase Client Library -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 flex flex-col min-h-screen">
+
+    <!-- Loading Overlay Modal -->
+    <div id="loadingModal" class="modal-backdrop">
+        <div class="glass-panel p-8 rounded-2xl max-w-md w-full text-center border border-emerald-500/30 shadow-2xl">
+            <div class="relative w-16 h-16 mx-auto mb-5">
+                <div class="absolute inset-0 rounded-full border-4 border-emerald-500/20"></div>
+                <div class="absolute inset-0 rounded-full border-4 border-emerald-400 border-t-transparent animate-spin"></div>
+                <div class="absolute inset-2 rounded-full border-2 border-cyan-400 border-b-transparent animate-spin" style="animation-direction: reverse; animation-duration: 1.5s;"></div>
+            </div>
+            <h3 class="text-xl font-bold text-white mb-2">Initializing Neural Networks</h3>
+            <p id="loadingStatus" class="text-sm text-gray-400 mb-4">Downloading facial recognition models...</p>
+            <div class="w-full bg-gray-800 rounded-full h-1.5 overflow-hidden">
+                <div class="bg-gradient-to-r from-emerald-400 to-cyan-400 h-1.5 rounded-full animate-pulse w-full"></div>
+            </div>
+            <p class="text-[11px] text-gray-500 mt-4">128-dimensional Deep ResNet Biometric Embeddings</p>
+        </div>
+    </div>
+
+    <!-- Navigation Header -->
+    <header class="border-b border-gray-800 bg-gray-900/60 backdrop-blur sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+                        BioVision <span class="text-xs px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono">v2.0 Web</span>
+                    </h1>
+                    <p class="text-xs text-gray-400">Embeddable Real-Time Facial Recognition Software</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <!-- Cloud Status Indicator (Clickable) -->
+                <button id="cloudStatusBtn" class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-800/80 border border-gray-700 hover:border-gray-500 text-xs transition">
+                    <span id="cloudStatusDot" class="w-2.5 h-2.5 rounded-full bg-gray-500"></span>
+                    <span id="cloudStatusText" class="text-gray-300">Local Only</span>
+                </button>
+
+                <!-- Camera Status -->
+                <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-800/80 border border-gray-700 text-xs">
+                    <span id="scannerStatusIndicator" class="w-2.5 h-2.5 rounded-full bg-gray-500"></span>
+                    <span id="scannerStatusText" class="text-gray-300">Camera Off</span>
+                </div>
+
+                <a href="embed-example.html" target="_blank" class="btn btn-sm btn-accent text-xs">
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                    </svg>
+                    Website Embed Demo
+                </a>
+            </div>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-1 border-t border-gray-800/60 overflow-x-auto">
+            <button class="nav-tab active" data-tab="scannerTab">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                </svg>
+                Live Scanner & Logs
+            </button>
+            <button class="nav-tab" data-tab="enrollTab">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/>
+                </svg>
+                Enroll New Face
+            </button>
+            <button class="nav-tab" data-tab="directoryTab">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+                </svg>
+                Registered Directory (<span id="peopleCountBadge">0</span>)
+            </button>
+            <button class="nav-tab" data-tab="cloudTab">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 00-9.78 2.096A4.001 4.001 0 003 15z"/>
+                </svg>
+                Cloud Sync (Supabase)
+            </button>
+            <button class="nav-tab" data-tab="compareTab">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                </svg>
+                1:1 Verification
+            </button>
+            <button class="nav-tab" data-tab="integrationTab">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                </svg>
+                Build Into Any Website
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-grow max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+
+        <!-- TAB 1: LIVE SCANNER & EVENT LOGS -->
+        <div id="scannerTab" class="tab-pane active">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Left 2 Cols: Camera Feed & Real-time HUD -->
+                <div class="lg:col-span-2 space-y-4">
+                    <div class="glass-panel p-4 rounded-2xl">
+                        <!-- Top HUD Bar -->
+                        <div class="flex items-center justify-between mb-3 text-xs">
+                            <div class="flex items-center gap-3">
+                                <span id="fpsBadge" class="badge badge-neutral font-mono">0 FPS</span>
+                                <span id="detectedCountBadge" class="badge badge-neutral">0 Detected</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-gray-400">Match:</span>
+                                <span id="activeMatchBadge" class="badge badge-neutral">None</span>
+                            </div>
+                        </div>
+
+                        <!-- Video Viewport with HUD -->
+                        <div class="scanner-viewport">
+                            <video id="webcamVideo" autoplay muted playsinline></video>
+                            <canvas id="overlayCanvas"></canvas>
+                            <!-- Cyber HUD Corners -->
+                            <div class="hud-corner hud-tl"></div>
+                            <div class="hud-corner hud-tr"></div>
+                            <div class="hud-corner hud-bl"></div>
+                            <div class="hud-corner hud-br"></div>
+                        </div>
+
+                        <!-- Camera Controls Bar -->
+                        <div class="mt-4 flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-gray-800">
+                            <div class="flex items-center gap-2">
+                                <button id="cameraToggleBtn" class="btn btn-primary">
+                                    <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                                    </svg>
+                                    Start Camera
+                                </button>
+                                <select id="cameraSelect" class="input-control text-xs w-44"></select>
+                            </div>
+
+                            <div class="flex items-center gap-4 text-xs text-gray-300">
+                                <label class="flex items-center gap-1.5 cursor-pointer">
+                                    <input type="checkbox" id="landmarksToggle" checked class="rounded border-gray-700 text-emerald-500 focus:ring-0">
+                                    Landmarks
+                                </label>
+                                <label class="flex items-center gap-1.5 cursor-pointer">
+                                    <input type="checkbox" id="soundToggle" checked class="rounded border-gray-700 text-emerald-500 focus:ring-0">
+                                    Audio Chime
+                                </label>
+                                <label class="flex items-center gap-1.5 cursor-pointer">
+                                    <input type="checkbox" id="mirrorToggle" checked class="rounded border-gray-700 text-emerald-500 focus:ring-0">
+                                    Mirror Video
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Sensitivity / Distance Threshold Slider -->
+                        <div class="mt-3 pt-3 border-t border-gray-800/60 flex items-center justify-between text-xs text-gray-400">
+                            <div class="flex items-center gap-2">
+                                <span>Sensitivity (Threshold):</span>
+                                <span id="thresholdVal" class="font-mono text-emerald-400 font-bold">0.55</span>
+                                <span class="text-[11px] text-gray-500">(Lower = Stricter, Higher = Lenient)</span>
+                            </div>
+                            <input type="range" id="thresholdSlider" min="0.30" max="0.75" step="0.01" value="0.55" class="w-48">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Col: Real-time Event Logs & Attendance Monitor -->
+                <div class="glass-panel p-4 rounded-2xl flex flex-col h-full max-h-[640px]">
+                    <div class="flex items-center justify-between pb-3 border-b border-gray-800">
+                        <div class="flex items-center gap-2">
+                            <div class="w-2 h-2 rounded-full bg-emerald-400"></div>
+                            <h3 class="font-bold text-sm text-white">Recognition & Access Log</h3>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button id="exportLogsBtn" class="text-xs text-gray-400 hover:text-emerald-400 transition" title="Export CSV">
+                                Export CSV
+                            </button>
+                            <span class="text-gray-700">|</span>
+                            <button id="clearLogsBtn" class="text-xs text-gray-400 hover:text-red-400 transition" title="Clear Logs">
+                                Clear
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Scrollable Log Items -->
+                    <div id="eventLogList" class="flex-grow overflow-y-auto space-y-2 mt-3 pr-1">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: ENROLL NEW FACE -->
+        <div id="enrollTab" class="tab-pane">
+            <div class="max-w-3xl mx-auto glass-panel p-6 sm:p-8 rounded-2xl">
+                <div class="border-b border-gray-800 pb-4 mb-6">
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                        <span class="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400">👤</span>
+                        Enroll Person / ID Profile
+                    </h2>
+                    <p class="text-xs text-gray-400 mt-1">Register a person into the biometric database. If Supabase Cloud is connected, it automatically syncs to cloud storage!</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Left: Camera Preview & Snapshot Trigger -->
+                    <div>
+                        <div class="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-gray-700 mb-3">
+                            <video id="enrollVideo" autoplay muted playsinline class="w-full h-full object-cover"></video>
+                            <img id="enrollPreview" class="hidden w-full h-full object-cover">
+                            <canvas id="enrollCanvas" class="hidden"></canvas>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <button id="captureSampleBtn" class="btn btn-secondary flex-grow text-xs">
+                                📸 Capture Camera Sample
+                            </button>
+                            <label class="btn btn-secondary text-xs cursor-pointer">
+                                📁 Upload Photo
+                                <input type="file" id="uploadSampleInput" accept="image/*" class="hidden">
+                            </label>
+                        </div>
+                        <p id="enrollStatusMsg" class="mt-2 text-xs min-h-[1.25rem]"></p>
+
+                        <!-- Captured Samples Row -->
+                        <div class="mt-4">
+                            <h4 class="text-xs font-semibold text-gray-400 mb-2">Captured Biometric Samples:</h4>
+                            <div id="capturedSamplesList" class="flex items-center gap-2 overflow-x-auto pb-1">
+                                <span class="text-xs text-gray-500 italic">No samples yet. Capture at least 1 photo.</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Metadata & Save Form -->
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-300 mb-1.5">Full Name or Identifier *</label>
+                            <input type="text" id="enrollNameInput" placeholder="e.g. Agney Sunil or Employee #1024" class="input-control" required>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-300 mb-1.5">Role / Department / Designation</label>
+                            <input type="text" id="enrollRoleInput" placeholder="e.g. Lead Architect, VIP, Staff" class="input-control">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-300 mb-1.5">Notes (Optional)</label>
+                            <textarea id="enrollNotesInput" rows="3" placeholder="Access permissions, emergency contact, or badge info..." class="input-control"></textarea>
+                        </div>
+
+                        <div class="pt-4 border-t border-gray-800 flex items-center justify-between gap-3">
+                            <button id="resetEnrollmentBtn" type="button" class="btn btn-secondary text-xs">
+                                Reset
+                            </button>
+                            <button id="saveEnrollmentBtn" type="button" disabled class="btn btn-primary text-xs flex-grow">
+                                ✓ Save to Biometric Database
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: REGISTERED DIRECTORY -->
+        <div id="directoryTab" class="tab-pane">
+            <div class="glass-panel p-6 sm:p-8 rounded-2xl">
+                <div class="flex flex-wrap items-center justify-between gap-4 pb-4 mb-6 border-b border-gray-800">
+                    <div>
+                        <h2 class="text-xl font-bold text-white">Registered Biometric Directory</h2>
+                        <p class="text-xs text-gray-400 mt-1">Manage enrolled face identities and 128-d vector database.</p>
+                    </div>
+
+                    <div class="flex items-center gap-3">
+                        <button id="exportDbBtn" class="btn btn-secondary btn-sm">
+                            📥 Export Database (JSON)
+                        </button>
+                        <label class="btn btn-secondary btn-sm cursor-pointer">
+                            📤 Import Database
+                            <input type="file" id="importDbInput" accept=".json" class="hidden">
+                        </label>
+                        <button id="clearDbBtn" class="btn btn-danger btn-sm">
+                            Clear All
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Grid of Enrolled Face Cards -->
+                <div id="peopleGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    <!-- Cards injected by JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 4: CLOUD SYNC (SUPABASE) -->
+        <div id="cloudTab" class="tab-pane">
+            <div class="max-w-4xl mx-auto glass-panel p-6 sm:p-8 rounded-2xl space-y-6">
+                <div class="border-b border-gray-800 pb-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                                <span class="text-emerald-400">⚡</span>
+                                Supabase Cloud Database & Storage
+                            </h2>
+                            <p class="text-xs text-gray-400 mt-1">Connect your project to Supabase to store photos in Cloud Storage and biometric vectors in PostgreSQL.</p>
+                        </div>
+                        <span id="cloudPanelBadge" class="badge badge-neutral">Not Connected</span>
+                    </div>
+                </div>
+
+                <!-- Configuration Form -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 p-5 rounded-xl bg-gray-900/70 border border-gray-800">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-300 mb-1">Supabase Project URL</label>
+                            <input type="url" id="supabaseUrlInput" placeholder="https://your-project.supabase.co" class="input-control text-xs font-mono">
+                            <span class="text-[11px] text-gray-500">Found in Supabase Dashboard &rarr; Settings &rarr; API &rarr; Project URL</span>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-300 mb-1">Supabase Public Anon Key</label>
+                            <input type="password" id="supabaseKeyInput" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." class="input-control text-xs font-mono">
+                            <span class="text-[11px] text-gray-500">Found in Supabase Dashboard &rarr; Settings &rarr; API &rarr; anon / public key</span>
+                        </div>
+                        <div class="flex items-center gap-2 pt-2">
+                            <button id="saveCloudConfigBtn" class="btn btn-primary btn-sm flex-grow">
+                                🔗 Test & Connect
+                            </button>
+                            <button id="disconnectCloudBtn" class="btn btn-secondary btn-sm">
+                                Disconnect
+                            </button>
+                        </div>
+                        <div id="cloudTestResult" class="text-xs mt-2 min-h-[1.5rem]"></div>
+                    </div>
+
+                    <!-- Cloud Sync Actions -->
+                    <div class="space-y-4 border-t md:border-t-0 md:border-l border-gray-800 md:pl-6 flex flex-col justify-between">
+                        <div>
+                            <h4 class="text-xs font-bold text-white uppercase tracking-wider mb-2">Bi-Directional Cloud Synchronization</h4>
+                            <p class="text-xs text-gray-400 mb-4">
+                                Sync all local enrolled faces to Supabase Cloud, and download any faces enrolled by other devices or team members into your local app.
+                            </p>
+                            <button id="syncCloudBtn" class="btn btn-accent btn-sm w-full py-2.5 flex items-center justify-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                                </svg>
+                                Sync All Faces (Local &harr; Cloud)
+                            </button>
+                        </div>
+                        <div class="p-3 rounded-lg bg-emerald-950/20 border border-emerald-500/20 text-[11px] text-gray-300 space-y-1">
+                            <p class="font-semibold text-emerald-400">✓ Automatic Real-Time Cloud Upload</p>
+                            <p>Whenever you enroll a face or capture a recognition event, it automatically syncs to Supabase in the background.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Setup SQL Schema Guide -->
+                <div class="p-5 rounded-xl bg-gray-900/50 border border-gray-800">
+                    <div class="flex items-center justify-between mb-3">
+                        <h4 class="text-sm font-bold text-white flex items-center gap-2">
+                            <span>📋</span> First-Time Supabase Setup (Run Once)
+                        </h4>
+                        <button id="copySqlBtn" class="btn btn-secondary btn-sm text-[11px]">
+                            Copy SQL Schema
+                        </button>
+                    </div>
+                    <p class="text-xs text-gray-400 mb-3">
+                        In your Supabase Dashboard, click <strong>SQL Editor</strong> &rarr; <strong>New Query</strong>, paste the SQL below, and click <strong>Run</strong>:
+                    </p>
+                    <pre class="bg-black/70 p-3 rounded-lg text-[11px] font-mono text-emerald-300 max-h-48 overflow-y-auto"><code>-- 1. Create table for Enrolled People
+CREATE TABLE IF NOT EXISTS public.faces (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    name TEXT UNIQUE NOT NULL,
+    role TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    photo_url TEXT DEFAULT '',
+    descriptors JSONB NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 2. Create table for Recognition Logs
+CREATE TABLE IF NOT EXISTS public.face_logs (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    name TEXT NOT NULL,
+    confidence INTEGER,
+    distance NUMERIC(6,4),
+    photo_url TEXT DEFAULT '',
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 3. GRANT TABLE PERMISSIONS (Fixes permission denied error)
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.faces TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.face_logs TO anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
+
+-- 4. Enable Row Level Security (RLS) & Policies
+ALTER TABLE public.faces ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.face_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public on faces" ON public.faces;
+CREATE POLICY "Allow public on faces" ON public.faces FOR ALL TO anon, authenticated, service_role USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public on logs" ON public.face_logs;
+CREATE POLICY "Allow public on logs" ON public.face_logs FOR ALL TO anon, authenticated, service_role USING (true) WITH CHECK (true);
+
+-- 5. Storage Bucket for Photos
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('face-photos', 'face-photos', true)
+ON CONFLICT (id) DO UPDATE SET public = true;
+DROP POLICY IF EXISTS "Allow public on photos" ON storage.objects;
+CREATE POLICY "Allow public on photos" ON storage.objects FOR ALL TO anon, authenticated, service_role USING (bucket_id = 'face-photos') WITH CHECK (bucket_id = 'face-photos');</code></pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 5: 1-TO-1 FACE VERIFICATION -->
+        <div id="compareTab" class="tab-pane">
+            <div class="max-w-4xl mx-auto glass-panel p-6 sm:p-8 rounded-2xl">
+                <div class="border-b border-gray-800 pb-4 mb-6">
+                    <h2 class="text-xl font-bold text-white">1:1 Face Verification & Photo Matcher</h2>
+                    <p class="text-xs text-gray-400 mt-1">Compare two headshot photos directly to determine whether they belong to the same person with exact Euclidean distance & similarity percentage.</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <!-- Image A -->
+                    <div class="glass-card p-4 rounded-xl text-center">
+                        <h4 class="text-sm font-semibold text-gray-300 mb-3">Photo A (e.g. ID Card / Passport)</h4>
+                        <div class="w-full aspect-square max-h-56 bg-gray-900 rounded-lg overflow-hidden border border-gray-700 flex items-center justify-center mb-3">
+                            <img id="compareImgA" class="hidden w-full h-full object-contain">
+                            <span class="text-xs text-gray-500">No Image Uploaded</span>
+                        </div>
+                        <label class="btn btn-secondary btn-sm cursor-pointer">
+                            Choose Photo A
+                            <input type="file" id="compareInputA" accept="image/*" class="hidden">
+                        </label>
+                    </div>
+
+                    <!-- Image B -->
+                    <div class="glass-card p-4 rounded-xl text-center">
+                        <h4 class="text-sm font-semibold text-gray-300 mb-3">Photo B (e.g. Live Selfie / Verification)</h4>
+                        <div class="w-full aspect-square max-h-56 bg-gray-900 rounded-lg overflow-hidden border border-gray-700 flex items-center justify-center mb-3">
+                            <img id="compareImgB" class="hidden w-full h-full object-contain">
+                            <span class="text-xs text-gray-500">No Image Uploaded</span>
+                        </div>
+                        <label class="btn btn-secondary btn-sm cursor-pointer">
+                            Choose Photo B
+                            <input type="file" id="compareInputB" accept="image/*" class="hidden">
+                        </label>
+                    </div>
+                </div>
+
+                <div class="text-center">
+                    <button id="runCompareBtn" class="btn btn-accent px-8">
+                        ⚡ Compare Biometric Vectors
+                    </button>
+                    <div id="compareResultBox" class="mt-4 max-w-md mx-auto"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 6: WEBSITE INTEGRATION GUIDE -->
+        <div id="integrationTab" class="tab-pane">
+            <div class="max-w-4xl mx-auto glass-panel p-6 sm:p-8 rounded-2xl space-y-6">
+                <div>
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                        <span class="text-emerald-400">⚡</span>
+                        How to Build This Into Any Website
+                    </h2>
+                    <p class="text-xs text-gray-400 mt-1">This facial recognition system is designed as a modular JavaScript SDK (`facial-recognition-sdk.js`). You can drop it into any HTML, React, Vue, or Angular website in under 5 minutes.</p>
+                </div>
+
+                <!-- Step 1 -->
+                <div class="p-4 rounded-xl bg-gray-900/80 border border-gray-800">
+                    <h3 class="text-sm font-bold text-emerald-400 mb-2">Step 1: Include the SDK and Dependencies in your HTML</h3>
+                    <p class="text-xs text-gray-400 mb-2">Add the Face-API CDN and the SDK script inside your <code>&lt;head&gt;</code> or before <code>&lt;/body&gt;</code>:</p>
+                    <pre class="bg-black/60 p-3 rounded-lg text-xs font-mono text-gray-200 overflow-x-auto"><code>&lt;!-- Face-API Neural Network Library --&gt;
+&lt;script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.js"&gt;&lt;/script&gt;
+
+&lt;!-- BioVision Facial Recognition SDK --&gt;
+&lt;script src="js/face-recognition-sdk.js"&gt;&lt;/script&gt;</code></pre>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="p-4 rounded-xl bg-gray-900/80 border border-gray-800">
+                    <h3 class="text-sm font-bold text-cyan-400 mb-2">Step 2: Initialize & Recognize in 5 Lines of JavaScript</h3>
+                    <pre class="bg-black/60 p-3 rounded-lg text-xs font-mono text-gray-200 overflow-x-auto"><code>// 1. Create SDK instance
+const faceSDK = new FacialRecognitionSDK();
+await faceSDK.init();
+
+// 2. Start webcam on any &lt;video&gt; element
+const video = document.getElementById('myWebcamVideo');
+await faceSDK.startCamera(video);
+
+// 3. Enroll a user with their image or current video frame
+await faceSDK.enrollPerson('Alice', video, { role: 'Admin' });
+
+// 4. Recognize whoever is in front of the camera
+const results = await faceSDK.recognize(video);
+results.forEach(person => {
+    console.log(`Recognized: ${person.name} (${person.confidence}%)`);
+});</code></pre>
+                </div>
+
+                <!-- Step 3: Embed Demo Link -->
+                <div class="p-4 rounded-xl bg-emerald-950/30 border border-emerald-500/40 flex items-center justify-between">
+                    <div>
+                        <h4 class="font-bold text-sm text-emerald-300">Live Website Embed Example</h4>
+                        <p class="text-xs text-gray-400">See a mock company login page showing "Sign In with Face ID" using this exact code.</p>
+                    </div>
+                    <a href="embed-example.html" target="_blank" class="btn btn-primary btn-sm">
+                        View Example Page &rarr;
+                    </a>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-gray-800 py-4 px-6 text-center text-xs text-gray-500 mt-auto">
+        BioVision Facial Recognition System • 128-d Biometric Deep Metric Learning • Supabase Cloud & Client Privacy
+    </footer>
+
+    <!-- App Scripts -->
+    <script src="js/audio-feedback.js"></script>
+    <script src="js/supabase-client.js"></script>
+    <script src="js/db.js"></script>
+    <script src="js/face-recognition-sdk.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

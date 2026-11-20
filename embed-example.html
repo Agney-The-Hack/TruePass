@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Website Integration Demo - Face ID Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Supabase Client Library -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <!-- Mock Website Container -->
+    <div class="max-w-md w-full glass-panel p-8 rounded-2xl border border-gray-800 shadow-2xl relative">
+        <div class="text-center mb-8">
+            <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-500 to-emerald-500 flex items-center justify-center mx-auto mb-3 shadow-lg shadow-cyan-500/20">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                </svg>
+            </div>
+            <h2 class="text-2xl font-bold text-white tracking-tight">Acme Portal</h2>
+            <p class="text-xs text-gray-400 mt-1">Example Website with Embedded Facial Recognition</p>
+        </div>
+
+        <!-- Normal Login Form -->
+        <div id="loginFormState" class="space-y-4">
+            <div>
+                <label class="block text-xs font-semibold text-gray-300 mb-1">Email address</label>
+                <input type="email" value="alex@example.com" class="input-control text-sm" placeholder="you@company.com">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-300 mb-1">Password</label>
+                <input type="password" value="••••••••••••" class="input-control text-sm">
+            </div>
+
+            <button type="button" class="btn btn-secondary w-full text-sm">
+                Sign In with Password
+            </button>
+
+            <!-- Divider -->
+            <div class="relative flex py-2 items-center">
+                <div class="flex-grow border-t border-gray-800"></div>
+                <span class="flex-shrink mx-4 text-[11px] text-gray-500 uppercase tracking-wider font-semibold">Or Biometric</span>
+                <div class="flex-grow border-t border-gray-800"></div>
+            </div>
+
+            <!-- EMBEDDED FACE RECOGNITION BUTTON -->
+            <button id="faceLoginBtn" type="button" class="btn btn-primary w-full text-sm py-3 flex items-center justify-center gap-2 group">
+                <svg class="w-5 h-5 text-white group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>Sign In with Face ID</span>
+            </button>
+
+            <div class="text-center mt-4">
+                <a href="index.html" class="text-xs text-emerald-400 hover:underline">
+                    &larr; Return to BioVision Dashboard (Enroll faces first)
+                </a>
+            </div>
+        </div>
+
+        <!-- Authenticated Success State (Shown after Face Match) -->
+        <div id="successState" class="hidden text-center py-6 space-y-4">
+            <div class="w-16 h-16 rounded-full bg-emerald-500/20 border-2 border-emerald-400 flex items-center justify-center mx-auto text-emerald-400">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
+                </svg>
+            </div>
+            <div>
+                <h3 class="text-lg font-bold text-white">Identity Verified!</h3>
+                <p id="authenticatedUserName" class="text-sm text-emerald-400 font-semibold mt-1">Welcome back, User</p>
+                <p id="authenticatedConfidence" class="text-xs text-gray-400 mt-0.5">Match confidence: 96%</p>
+            </div>
+            <div class="p-3 rounded-lg bg-gray-900 border border-gray-800 text-xs text-left text-gray-300">
+                <span class="text-emerald-400 font-mono">auth_token:</span> <span class="font-mono text-gray-400">eyJhbGciOiJIUzI1NiIsInR5cCI...</span>
+            </div>
+            <button id="logoutBtn" class="btn btn-secondary btn-sm w-full">Sign Out</button>
+        </div>
+    </div>
+
+    <!-- Face ID Scanner Modal -->
+    <div id="faceModal" class="modal-backdrop hidden">
+        <div class="glass-panel p-6 rounded-2xl max-w-sm w-full text-center border border-emerald-500/40 relative">
+            <button id="closeModalBtn" class="absolute top-4 right-4 text-gray-400 hover:text-white text-lg">✕</button>
+            
+            <h3 class="text-base font-bold text-white mb-1">Face ID Verification</h3>
+            <p id="modalStatus" class="text-xs text-gray-400 mb-4">Position your face within the frame...</p>
+
+            <!-- Video + Canvas Container -->
+            <div class="relative w-full aspect-square rounded-xl overflow-hidden bg-black border-2 border-emerald-500/50 mb-4">
+                <video id="modalVideo" autoplay muted playsinline class="w-full h-full object-cover"></video>
+                <canvas id="modalCanvas" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
+                <!-- Scanning Laser Line Animation -->
+                <div class="absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent animate-pulse" style="top: 30%;"></div>
+            </div>
+
+            <p class="text-[11px] text-gray-500">Fast biometric matching with Supabase Cloud & Local storage.</p>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/audio-feedback.js"></script>
+    <script src="js/supabase-client.js"></script>
+    <script src="js/db.js"></script>
+    <script src="js/face-recognition-sdk.js"></script>
+
+    <script>
+        // Minimal code needed to build Facial Recognition into ANY website:
+        document.addEventListener('DOMContentLoaded', async () => {
+            const faceLoginBtn = document.getElementById('faceLoginBtn');
+            const faceModal = document.getElementById('faceModal');
+            const closeModalBtn = document.getElementById('closeModalBtn');
+            const modalVideo = document.getElementById('modalVideo');
+            const modalCanvas = document.getElementById('modalCanvas');
+            const modalStatus = document.getElementById('modalStatus');
+            const loginFormState = document.getElementById('loginFormState');
+            const successState = document.getElementById('successState');
+            const authenticatedUserName = document.getElementById('authenticatedUserName');
+            const authenticatedConfidence = document.getElementById('authenticatedConfidence');
+            const logoutBtn = document.getElementById('logoutBtn');
+
+            // 1. Initialize SDK & load stored enrolled profiles from DB / Cloud
+            const sdk = new FacialRecognitionSDK({ distanceThreshold: 0.55 });
+            let isScanning = false;
+            let loopId = null;
+
+            async function init() {
+                await sdk.init();
+                await window.faceDB.init();
+
+                // If Supabase is connected, sync from Cloud too
+                if (window.supabaseSync && window.supabaseSync.isReady) {
+                    try {
+                        const cloudPeople = await window.supabaseSync.fetchPeopleFromCloud();
+                        cloudPeople.forEach(p => sdk.enrollPerson(p.name, p.descriptors, { role: p.role, photo: p.photo }));
+                    } catch (e) {
+                        console.debug('Cloud sync notice:', e);
+                    }
+                }
+
+                // Also load local database people
+                const people = await window.faceDB.getAllPeople();
+                people.forEach(p => sdk.enrollPerson(p.name, p.descriptors, { role: p.role, photo: p.photo }));
+            }
+            init();
+
+            // 2. Open Face Scanner on button click
+            faceLoginBtn.addEventListener('click', async () => {
+                faceModal.classList.remove('hidden');
+                modalStatus.textContent = 'Starting camera...';
+
+                try {
+                    await sdk.startCamera(modalVideo);
+                    isScanning = true;
+                    modalStatus.textContent = 'Scanning for enrolled face...';
+                    scanForAuth();
+                } catch (e) {
+                    modalStatus.textContent = `Camera error: ${e.message}`;
+                }
+            });
+
+            // 3. Scan & Match loop
+            async function scanForAuth() {
+                if (!isScanning) return;
+
+                if (modalVideo.readyState >= 2) {
+                    modalCanvas.width = modalVideo.videoWidth;
+                    modalCanvas.height = modalVideo.videoHeight;
+
+                    const results = await sdk.recognize(modalVideo);
+                    sdk.drawHUD(modalCanvas, results, { mirrored: false });
+
+                    // Check if any recognized person matched
+                    const matchedUser = results.find(r => r.isRecognized);
+                    if (matchedUser) {
+                        modalStatus.textContent = `Match found: ${matchedUser.name}! Logging in...`;
+                        if (window.soundEffects) window.soundEffects.playSuccess();
+
+                        setTimeout(() => {
+                            closeModal();
+                            loginFormState.classList.add('hidden');
+                            successState.classList.remove('hidden');
+                            authenticatedUserName.textContent = `Welcome back, ${matchedUser.name}!`;
+                            authenticatedConfidence.textContent = `Match confidence: ${matchedUser.confidence}% • Euclidean distance: ${matchedUser.distance.toFixed(3)}`;
+                        }, 800);
+                        return;
+                    }
+                }
+                loopId = requestAnimationFrame(scanForAuth);
+            }
+
+            function closeModal() {
+                isScanning = false;
+                if (loopId) cancelAnimationFrame(loopId);
+                sdk.stopCamera();
+                faceModal.classList.add('hidden');
+            }
+
+            closeModalBtn.addEventListener('click', closeModal);
+
+            logoutBtn.addEventListener('click', () => {
+                successState.classList.add('hidden');
+                loginFormState.classList.remove('hidden');
+            });
+        });
+    </script>
+</body>
+</html>
