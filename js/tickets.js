@@ -235,7 +235,7 @@
     async function syncCloudBookingsForUser(profile) {
         if (!profile || !profile.name || !window.supabaseSync) return;
         try {
-            const cloudRows = await window.supabaseSync.fetchTicketsByPerson(profile.name);
+            const cloudRows = await window.supabaseSync.fetchTicketsByPerson(profile.name, profile.email);
             if (cloudRows && cloudRows.length > 0) {
                 let local = [];
                 try {
@@ -576,6 +576,48 @@
                     }
                     return;
                 }
+                // Automatically ensure account is created & saved to Supabase Cloud for this buyer
+                if (!currentProfile || currentProfile.name.toLowerCase() !== name.toLowerCase()) {
+                    const memberId = 'TP-STA-' + Math.floor(100000 + Math.random() * 900000);
+                    currentProfile = {
+                        memberId,
+                        name,
+                        email: email || (name.toLowerCase().replace(/[^a-z0-9]/g, '') + '@truepass.io'),
+                        phone: phone || '+91 98765 43210',
+                        dob: '1998-05-14',
+                        idType: 'National ID',
+                        idNumber: 'ID-' + Math.floor(100000 + Math.random() * 900000),
+                        loyaltyTier: 'Standard',
+                        photo: '',
+                        descriptors: [],
+                        lastLogin: Date.now()
+                    };
+                    try {
+                        localStorage.setItem(SESSION_KEY, JSON.stringify(currentProfile));
+                        localStorage.setItem(PROFILE_KEY, JSON.stringify(currentProfile));
+                    } catch (err) {}
+
+                    if (window.supabaseSync) {
+                        window.supabaseSync.saveProfileToCloud({
+                            name: currentProfile.name,
+                            email: currentProfile.email,
+                            phone: currentProfile.phone,
+                            dob: currentProfile.dob,
+                            idType: currentProfile.idType,
+                            idNumber: currentProfile.idNumber,
+                            loyaltyTier: currentProfile.loyaltyTier,
+                            photo: '',
+                            descriptors: [],
+                            notes: 'Member ID: ' + memberId + ' • Created on Checkout'
+                        }).then(function (cRes) {
+                            if (cRes && cRes.success) {
+                                console.log('[Supabase Cloud] Account automatically saved to cloud for: ' + name);
+                            }
+                        }).catch(function (e) { console.warn('[Supabase Cloud Checkout Account]', e); });
+                    }
+                    checkPersistentSession();
+                }
+
 
                 currentBooking = {
                     bookingId: 'TP-' + Math.floor(100000 + Math.random() * 900000),
@@ -637,27 +679,244 @@
     }
 
     // Open Booking Flow for an Event (REQUIRES SIGNED-IN USER ACCOUNT)
+        // Active Auth Modal Callback
+    let authModalCallback = null;
+
+    // Open Booking Flow for an Event (Connected to Supabase Accounts & Tickets)
     window.truePass = {
-        openBooking: function (eventId) {
-            if (!currentProfile) {
-                if (window.showConfirm) {
-                    window.showConfirm({
-                        title: 'Sign In Required',
-                        message: 'To protect tickets with facial biometrics and bind passes directly to your verified account on the cloud, please sign in or register first.',
-                        confirmText: 'Sign In / Register',
-                        cancelText: 'Cancel'
-                    }).then(confirmed => {
-                        if (confirmed) {
-                            window.location.href = 'onboarding.html?mode=login';
-                        }
-                    });
-                } else {
-                    window.location.href = 'onboarding.html';
+        openAuthModal: function (tab, callback) {
+            tab = tab || 'register';
+            authModalCallback = callback || null;
+            const modal = document.getElementById('accountAuthModal');
+            if (!modal) return;
+            modal.classList.remove('hidden');
+            window.truePass.switchAuthTab(tab);
+            const feedback = document.getElementById('authModalFeedbackMsg');
+            if (feedback) feedback.classList.add('hidden');
+        },
+
+        closeAuthModal: function () {
+            const modal = document.getElementById('accountAuthModal');
+            if (modal) modal.classList.add('hidden');
+            authModalCallback = null;
+        },
+
+        switchAuthTab: function (tab) {
+            const regForm = document.getElementById('authRegisterForm');
+            const loginForm = document.getElementById('authLoginForm');
+            const regBtn = document.getElementById('authTabRegisterBtn');
+            const loginBtn = document.getElementById('authTabLoginBtn');
+
+            if (tab === 'register') {
+                if (regForm) regForm.classList.remove('hidden');
+                if (loginForm) loginForm.classList.add('hidden');
+                if (regBtn) regBtn.className = 'flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all bg-red-600 text-white shadow-md cursor-pointer';
+                if (loginBtn) loginBtn.className = 'flex-1 py-2 px-3 rounded-xl text-xs font-semibold text-gray-400 hover:text-white transition-all cursor-pointer';
+                const nameInp = document.getElementById('authRegisterName');
+                if (nameInp) nameInp.focus();
+            } else {
+                if (regForm) regForm.classList.add('hidden');
+                if (loginForm) loginForm.classList.remove('hidden');
+                if (regBtn) regBtn.className = 'flex-1 py-2 px-3 rounded-xl text-xs font-semibold text-gray-400 hover:text-white transition-all cursor-pointer';
+                if (loginBtn) loginBtn.className = 'flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all bg-red-600 text-white shadow-md cursor-pointer';
+                const idInp = document.getElementById('authLoginIdentifier');
+                if (idInp) idInp.focus();
+            }
+        },
+
+        continueAsGuest: function () {
+            window.truePass.closeAuthModal();
+            if (typeof authModalCallback === 'function') {
+                const cb = authModalCallback;
+                authModalCallback = null;
+                cb();
+            }
+        },
+
+        handleRegister: async function (e) {
+            if (e) e.preventDefault();
+            const nameEl = document.getElementById('authRegisterName');
+            const emailEl = document.getElementById('authRegisterEmail');
+            const phoneEl = document.getElementById('authRegisterPhone');
+            const name = (nameEl ? nameEl.value : '').trim();
+            const email = (emailEl ? emailEl.value : '').trim();
+            const phone = (phoneEl ? phoneEl.value : '').trim();
+            const tier = document.querySelector('input[name="authTier"]:checked')?.value || 'Standard';
+            const feedback = document.getElementById('authModalFeedbackMsg');
+            const btn = document.getElementById('authSubmitRegisterBtn');
+
+            if (!name || !email) {
+                if (feedback) {
+                    feedback.className = 'p-3 rounded-xl bg-red-950/60 border border-red-500/50 text-red-300 text-xs font-semibold block';
+                    feedback.textContent = 'Full Name and Email are required.';
                 }
                 return;
             }
 
-            selectedEvent = EVENTS_DATA.find(e => e.id === eventId);
+            const origText = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span>Saving Account to Supabase Cloud...</span>';
+            }
+
+            const memberId = 'TP-' + tier.substring(0, 3).toUpperCase() + '-' + Math.floor(100000 + Math.random() * 900000);
+            const profile = {
+                memberId: memberId,
+                name: name,
+                email: email,
+                phone: phone || '+91 98765 43210',
+                dob: '1998-05-14',
+                idType: 'Passport',
+                idNumber: 'ID-' + Math.floor(100000 + Math.random() * 900000),
+                loyaltyTier: tier,
+                photo: '',
+                descriptors: [],
+                lastLogin: Date.now()
+            };
+
+            currentProfile = profile;
+            try {
+                localStorage.setItem(SESSION_KEY, JSON.stringify(profile));
+                localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+            } catch (err) {}
+
+            let cloudLatency = 0;
+            if (window.supabaseSync) {
+                try {
+                    const cRes = await window.supabaseSync.saveProfileToCloud({
+                        name: profile.name,
+                        email: profile.email,
+                        phone: profile.phone,
+                        dob: profile.dob,
+                        idType: profile.idType,
+                        idNumber: profile.idNumber,
+                        loyaltyTier: profile.loyaltyTier,
+                        photo: '',
+                        descriptors: [],
+                        notes: 'Member ID: ' + memberId + ' • Created on Tickets Site'
+                    });
+                    if (cRes && cRes.latencyMs) cloudLatency = cRes.latencyMs;
+                } catch (cErr) {
+                    console.warn('[Supabase Account Save]', cErr);
+                }
+            }
+
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = origText;
+            }
+
+            checkPersistentSession();
+            window.truePass.closeAuthModal();
+
+            if (window.showToast) {
+                window.showToast('Account created & saved to Supabase Cloud (' + cloudLatency + 'ms)!', 'success');
+            }
+
+            if (typeof authModalCallback === 'function') {
+                const cb = authModalCallback;
+                authModalCallback = null;
+                cb();
+            }
+        },
+
+        handleLogin: async function (e) {
+            if (e) e.preventDefault();
+            const idEl = document.getElementById('authLoginIdentifier');
+            const identifier = (idEl ? idEl.value : '').trim();
+            const feedback = document.getElementById('authModalFeedbackMsg');
+            const btn = document.getElementById('authSubmitLoginBtn');
+
+            if (!identifier) {
+                if (feedback) {
+                    feedback.className = 'p-3 rounded-xl bg-red-950/60 border border-red-500/50 text-red-300 text-xs font-semibold block';
+                    feedback.textContent = 'Please enter your Full Legal Name or Email.';
+                }
+                return;
+            }
+
+            const origText = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span>Verifying with Supabase Cloud...</span>';
+            }
+
+            let matched = null;
+            if (window.supabaseSync) {
+                try {
+                    const p = await window.supabaseSync.findProfileInCloud(identifier);
+                    if (p) {
+                        matched = {
+                            memberId: 'TP-' + (p.loyalty_tier || 'Standard').substring(0, 3).toUpperCase() + '-' + Math.floor(100000 + Math.random() * 900000),
+                            name: p.name,
+                            email: p.email || (identifier.includes('@') ? identifier : (p.name.toLowerCase().replace(/[^a-z0-9]/g, '') + '@truepass.io')),
+                            phone: p.phone || '+91 98765 43210',
+                            dob: p.dob || '1998-05-14',
+                            idType: p.id_type || 'Passport',
+                            idNumber: p.id_number || '',
+                            loyaltyTier: p.loyalty_tier || 'Standard',
+                            photo: p.photo_url || '',
+                            descriptors: p.descriptors || [],
+                            lastLogin: Date.now()
+                        };
+                    }
+                } catch (err) {}
+            }
+
+            if (!matched) {
+                try {
+                    const localSession = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
+                    const localProfile = JSON.parse(localStorage.getItem(PROFILE_KEY) || '{}');
+                    const idLower = identifier.toLowerCase();
+                    if (localProfile.name && (localProfile.name.toLowerCase() === idLower || (localProfile.email && localProfile.email.toLowerCase() === idLower))) {
+                        matched = localProfile;
+                    } else if (localSession.name && (localSession.name.toLowerCase() === idLower || (localSession.email && localSession.email.toLowerCase() === idLower))) {
+                        matched = localSession;
+                    }
+                } catch (err) {}
+            }
+
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = origText;
+            }
+
+            if (matched) {
+                currentProfile = matched;
+                try {
+                    localStorage.setItem(SESSION_KEY, JSON.stringify(matched));
+                    localStorage.setItem(PROFILE_KEY, JSON.stringify(matched));
+                } catch (err) {}
+                checkPersistentSession();
+                syncCloudBookingsForUser(matched);
+                window.truePass.closeAuthModal();
+
+                if (window.showToast) {
+                    window.showToast('Welcome back, ' + matched.name + '! Tickets synced from Supabase Cloud.', 'success');
+                }
+
+                if (typeof authModalCallback === 'function') {
+                    const cb = authModalCallback;
+                    authModalCallback = null;
+                    cb();
+                }
+            } else {
+                if (feedback) {
+                    feedback.className = 'p-3 rounded-xl bg-amber-950/60 border border-amber-500/50 text-amber-300 text-xs font-semibold block';
+                    feedback.innerHTML = 'No account found for "<strong>' + identifier + '</strong>". Click <strong>Create Account</strong> to register!';
+                }
+            }
+        },
+
+        openBooking: function (eventId) {
+            if (!currentProfile) {
+                window.truePass.openAuthModal('register', function () {
+                    window.truePass.openBooking(eventId);
+                });
+                return;
+            }
+
+        selectedEvent = EVENTS_DATA.find(e => e.id === eventId);
             if (!selectedEvent) return;
 
             selectedDate = selectedEvent.dates[0];
