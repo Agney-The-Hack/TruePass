@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quai Resale Hub | TruePass Biometric Secondary Ticket Marketplace</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        quai: {
+                            50: '#fdf3f2',
+                            100: '#fbe4e2',
+                            500: '#e1382b',
+                            600: '#c8261a',
+                            700: '#a71c12',
+                            900: '#5c0f0a'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Outfit:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0b0f19; }
+        h1, h2, h3, h4, .brand-font { font-family: 'Outfit', sans-serif; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        .glass-surface {
+            background: rgba(16, 22, 38, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .quai-glow {
+            box-shadow: 0 0 25px -5px rgba(225, 56, 43, 0.35);
+        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+    <!-- Supabase & Face API CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.js"></script>
+    <!-- Minimalist Black & Grey Glassy Shimmer Stylesheet -->
+    <link rel="stylesheet" href="assets/minimalist-glass.css">
+</head>
+<body class="text-gray-100 min-h-screen flex flex-col antialiased selection:bg-red-500 selection:text-white">
+
+    <!-- Top Announcement Bar (Quai Network Integration Notice) -->
+    <div class="bg-[#121212] border-b border-white/10 px-4 py-2 text-center text-xs font-medium text-neutral-400">
+        <span class="inline-flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-neutral-400"></span>
+            <span class="font-bold text-white">Quai Network Secondary Hub Active</span>
+            <span class="hidden sm:inline">• Cyprus-1 Zone Shard • 100% Anti-Scalp Price Caps (Max 110%) • Biometric Ownership Re-Binding</span>
+        </span>
+    </div>
+
+    <!-- Main Navigation Bar -->
+    <header class="sticky top-0 z-40 bg-[#0a0a0a]/90 backdrop-blur-xl border-b border-white/10">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-20 gap-4">
+                
+                <!-- Left: TruePass Brand + Quai Badge -->
+                <div class="flex items-center gap-3">
+                    <a href="index.html" class="flex items-center gap-3 group">
+                        <div class="w-10 h-10 rounded-xl bg-neutral-800 border border-white/15 flex items-center justify-center text-white font-bold text-sm tracking-widest group-hover:border-white/30 transition-all">
+                            TP
+                        </div>
+                        <div>
+                            <div class="brand-font font-bold text-lg tracking-tight text-white flex items-center gap-1.5">
+                                TruePass <span class="text-xs px-2 py-0.5 rounded-md bg-white/10 text-neutral-300 font-mono font-normal">Resale</span>
+                            </div>
+                            <span class="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">POWERED BY QUAI NETWORK</span>
+                        </div>
+                    </a>
+
+                    <!-- Cyprus-1 Shard Indicator -->
+                    <span class="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-[10px] font-mono text-neutral-300">
+                        <span class="w-1.5 h-1.5 rounded-full bg-neutral-400"></span>
+                        Shard: Cyprus-1
+                    </span>
+                </div>
+
+                <!-- Center Nav Links -->
+                <nav class="hidden lg:flex items-center gap-1 p-1 rounded-xl bg-neutral-900/80 border border-white/10">
+                    <a href="tickets.html" class="btn-glass px-3 py-1.5 rounded-lg text-xs font-semibold text-neutral-400 hover:text-white transition-all flex items-center">
+                        <svg class="w-3.5 h-3.5 inline-block mr-1.5 text-neutral-400 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 6v.75m0 3v.75m0 3v.75m0 3V18m-9-5.25h5.25M7.5 15h3M3.375 5.25c-.621 0-1.125.504-1.125 1.125v3.026a2.999 2.999 0 010 5.198v3.026c0 .621.504 1.125 1.125 1.125h17.25c.621 0 1.125-.504 1.125-1.125v-3.026a2.999 2.999 0 010-5.198V6.375c0-.621-.504-1.125-1.125-1.125H3.375z"/></svg>
+                        <span>Primary Events</span>
+                    </a>
+                    <a href="resale.html" class="tab-pill active btn-glass px-3.5 py-1.5 rounded-lg text-xs font-bold text-white transition-all flex items-center">
+                        <svg class="w-3.5 h-3.5 inline-block mr-1.5 text-neutral-300 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/></svg>
+                        <span>Quai Resale Marketplace</span>
+                    </a>
+                    <a href="onboarding.html" class="btn-glass px-3 py-1.5 rounded-lg text-xs font-semibold text-neutral-400 hover:text-white transition-all flex items-center">
+                        <svg class="w-3.5 h-3.5 inline-block mr-1.5 text-neutral-400 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>
+                        <span>Biometric ID</span>
+                    </a>
+                </nav>
+
+                <!-- Right Action Buttons -->
+                <div class="flex items-center gap-3">
+                    
+                    <!-- Sell Ticket CTA -->
+                    <button id="openSellModalNavBtn" class="btn-glass-primary px-4 py-2 rounded-xl text-white font-semibold text-xs flex items-center gap-1.5 transition-all cursor-pointer">
+                        <svg class="w-4 h-4 text-white stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                        <span>Sell a Ticket</span>
+                    </button>
+
+                    <!-- My Active Listings Button -->
+                    <button id="myListingsBtn" class="btn-glass px-3.5 py-2 rounded-xl text-xs font-semibold text-neutral-200 flex items-center gap-2 transition-all">
+                        <span>My Listings</span>
+                        <span id="myListingsBadge" class="hidden px-1.5 py-0.5 rounded-full bg-white/10 text-white text-[10px] font-mono border border-white/20">0</span>
+                    </button>
+
+                    <!-- Quai / Pelagus Wallet Connect Button -->
+                    <button id="connectQuaiWalletBtn" class="btn-glass px-3.5 py-2 rounded-xl text-xs font-bold text-neutral-200 flex items-center gap-2 transition-all cursor-pointer">
+                        <span class="w-2 h-2 rounded-full bg-neutral-400"></span>
+                        <span id="quaiWalletBtnText">Connect Pelagus Wallet</span>
+                        <span id="quaiWalletBalanceBadge" class="hidden px-1.5 py-0.5 rounded bg-white/10 border border-white/10 text-[10px] text-neutral-200 font-mono">0 QUAI</span>
+                    </button>
+
+                    <!-- User Account / Member Pass Avatar -->
+                    <div id="resaleUserNav" class="hidden flex items-center gap-2 pl-2 border-l border-white/10">
+                        <a href="tickets.html" class="flex items-center gap-2 p-1 pr-2.5 rounded-xl bg-neutral-900 border border-white/10 text-xs text-white hover:border-white/30 transition-all">
+                            <img id="resaleUserAvatar" src="" class="w-7 h-7 rounded-lg object-cover border border-white/20">
+                            <span id="resaleUserName" class="font-bold hidden sm:inline">User</span>
+                        </a>
+                        <button onclick="window.resaleSignOut()" class="btn-glass px-2.5 py-1.5 rounded-xl text-neutral-400 hover:text-white text-xs font-semibold transition-all">Sign Out</button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </header>
+
+            </div>
+        </div>
+    </header>
+
+    <!-- Hero Billboard Section -->
+    <section class="relative bg-[#0d0d0d] border-b border-white/10 overflow-hidden">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 relative">
+            
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+                
+                <div class="lg:col-span-8 space-y-4">
+                    <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-mono text-neutral-400">
+                        <span class="w-1.5 h-1.5 rounded-full bg-neutral-400"></span>
+                        Quai Network Orchard Testnet (Cyprus-1 Shard)
+                    </div>
+
+                    <h1 class="text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight leading-tight">
+                        Fan-to-Fan Resale on Quai Blockchain
+                    </h1>
+
+                    <p class="text-sm text-neutral-400 max-w-2xl leading-relaxed">
+                        Can't make it to the show? Resell your genuine TruePass event tickets securely on Quai Network. Anti-scalping rules cap prices at 110% of face value, and tickets are biometrically re-bound to the new buyer upon on-chain settlement.
+                    </p>
+
+                    <!-- Real-Time Quai Metrics Grid -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 max-w-2xl">
+                        <div class="p-3 rounded-2xl bg-neutral-900/60 border border-white/10">
+                            <div class="text-[10px] font-mono uppercase text-neutral-500">Active Listings</div>
+                            <div id="statActiveCount" class="text-lg font-bold text-white mt-0.5">5 Verified</div>
+                            <div class="text-[10px] text-neutral-400 font-mono">100% Genuine</div>
+                        </div>
+
+                        <div class="p-3 rounded-2xl bg-neutral-900/60 border border-white/10">
+                            <div class="text-[10px] font-mono uppercase text-neutral-500">Anti-Scalp Cap</div>
+                            <div class="text-lg font-bold text-white mt-0.5">Max 110%</div>
+                            <div class="text-[10px] text-neutral-400 font-mono">Fair Fan Pricing</div>
+                        </div>
+
+                        <div class="p-3 rounded-2xl bg-neutral-900/60 border border-white/10">
+                            <div class="text-[10px] font-mono uppercase text-neutral-500">Quai Gas Fee</div>
+                            <div class="text-lg font-bold text-white mt-0.5">&lt; 0.001 QUAI</div>
+                            <div class="text-[10px] text-neutral-400 font-mono">Near Instant</div>
+                        </div>
+
+                        <div class="p-3 rounded-2xl bg-neutral-900/60 border border-white/10">
+                            <div class="text-[10px] font-mono uppercase text-neutral-500">Consensus</div>
+                            <div class="text-lg font-bold text-white mt-0.5">Cyprus-1</div>
+                            <div class="text-[10px] text-neutral-400 font-mono">Multi-Shard PoEM</div>
+                        </div>
+                    </div>
+
+                    <div class="pt-2 flex flex-wrap items-center gap-3">
+                        <button id="openSellModalHeroBtn" class="btn-glass-primary px-6 py-3 rounded-xl text-white font-bold text-sm flex items-center gap-2 cursor-pointer">
+                            <svg class="w-4 h-4 text-white stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                            <span>List a Ticket for Resale</span>
+                        </button>
+                        <a href="tickets.html" class="btn-glass px-5 py-3 rounded-xl text-neutral-200 font-semibold text-sm transition-all">
+                            Browse Primary Tickets &rarr;
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Right Feature Card -->
+                <div class="lg:col-span-4 relative">
+                    <div class="p-5 rounded-3xl bg-neutral-900/70 border border-white/10 space-y-4">
+                        <div class="flex items-center justify-between pb-3 border-b border-white/10">
+                            <span class="text-xs font-bold text-white flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-neutral-400"></span>
+                                Quai Blockchain Guarantee
+                            </span>
+                            <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-white/10 text-neutral-300 border border-white/10">TESTNET</span>
+                        </div>
+
+                        <div class="space-y-3 text-xs text-neutral-300">
+                            <div class="flex items-start gap-2.5">
+                                <span class="w-5 h-5 rounded-full bg-white/10 text-white flex items-center justify-center shrink-0 text-[10px] font-bold border border-white/15">✓</span>
+                                <div>
+                                    <strong class="text-white block">Seller Ownership Verification</strong>
+                                    Only genuine tickets minted to the seller can be listed.
+                                </div>
+                            </div>
+
+                            <div class="flex items-start gap-2.5">
+                                <span class="w-5 h-5 rounded-full bg-white/10 text-white flex items-center justify-center shrink-0 text-[10px] font-bold border border-white/15">✓</span>
+                                <div>
+                                    <strong class="text-white block">Biometric Ownership Re-Binding</strong>
+                                    Upon Quai purchase, the old face is revoked and the buyer's face is bound.
+                                </div>
+                            </div>
+
+                            <div class="flex items-start gap-2.5">
+                                <span class="w-5 h-5 rounded-full bg-white/10 text-white flex items-center justify-center shrink-0 text-[10px] font-bold border border-white/15">✓</span>
+                                <div>
+                                    <strong class="text-white block">5% Artist Royalty Payout</strong>
+                                    Original creators automatically earn royalties on every resale.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pt-2 border-t border-white/10 flex items-center justify-between text-[11px] font-mono text-neutral-400">
+                            <span>Gas Token: <strong class="text-white">QUAI</strong></span>
+                            <span>Rate: <strong class="text-neutral-200">1 QUAI = ₹250</strong></span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </section>
+
+    <!-- Category Filter Bar -->
+    <nav class="border-b border-gray-800/80 bg-gray-950/60 sticky top-20 z-30 backdrop-blur-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
+                
+                <!-- Category Tabs -->
+                <div class="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar w-full sm:w-auto">
+                    <button class="resale-cat-pill active btn-glass px-4 py-2 rounded-xl text-white font-semibold text-xs transition-all whitespace-nowrap flex items-center gap-1.5" data-cat="all">
+                        <svg class="w-3.5 h-3.5 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z"/></svg>
+                        <span>All Resale Tickets</span>
+                    </button>
+                    <button class="resale-cat-pill btn-glass px-4 py-2 rounded-xl text-gray-300 hover:text-white font-semibold text-xs transition-all whitespace-nowrap flex items-center gap-1.5" data-cat="concerts">
+                        <svg class="w-3.5 h-3.5 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 9l10.5-3m0 6.553v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-.99-3.467l2.31-.66a.75.75 0 00.542-.72V8.406l-9 2.571v5.776a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.802 1.802 0 11-.99-3.467l2.31-.66A.75.75 0 009 14.446V9z"/></svg>
+                        <span>Concerts & Tours</span>
+                    </button>
+                    <button class="resale-cat-pill btn-glass px-4 py-2 rounded-xl text-gray-300 hover:text-white font-semibold text-xs transition-all whitespace-nowrap flex items-center gap-1.5" data-cat="sports">
+                        <svg class="w-3.5 h-3.5 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.504-1.125-1.125-1.125h-.871a3 3 0 00-2.83 2.051l-.16.488a1.5 1.5 0 01-1.42 1.036H9.375a1.5 1.5 0 01-1.42-1.036l-.16-.488a3 3 0 00-2.83-2.051h-.871c-.621 0-1.125.504-1.125 1.125v3.375m13.5-9V6.75A2.25 2.25 0 0014.25 4.5h-4.5A2.25 2.25 0 007.5 6.75v3m9 0a3.75 3.75 0 01-3.75 3.75h-1.5A3.75 3.75 0 017.5 9.75m9 0h2.25A2.25 2.25 0 0021 7.5V6a2.25 2.25 0 00-2.25-2.25h-.75m-10.5 6H5.25A2.25 2.25 0 013 7.5V6A2.25 2.25 0 015.25 3.75h.75"/></svg>
+                        <span>Live Sports</span>
+                    </button>
+                    <button class="resale-cat-pill btn-glass px-4 py-2 rounded-xl text-gray-300 hover:text-white font-semibold text-xs transition-all whitespace-nowrap flex items-center gap-1.5" data-cat="movies">
+                        <svg class="w-3.5 h-3.5 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h1.5C5.496 19.5 6 18.996 6 18.375m-3.75 0V5.625m0 12.75a1.125 1.125 0 001.125 1.125m0-13.875A1.125 1.125 0 013.375 4.5h1.5C5.496 4.5 6 5.004 6 5.625m-3.75 0v1.5m18 12.75a1.125 1.125 0 001.125-1.125V5.625a1.125 1.125 0 00-1.125-1.125H18c-.621 0-1.125.504-1.125 1.125m3.75 13.875V18.375c0-.621-.504-1.125-1.125-1.125m-15-1.5h15m-15-4.5h15m-15-4.5h15"/></svg>
+                        <span>Cinema & IMAX</span>
+                    </button>
+                </div>
+
+                <!-- Sorting & Search -->
+                <div class="flex items-center gap-2 w-full sm:w-auto">
+                    <div class="relative flex-1 sm:w-64">
+                        <input type="text" id="resaleSearchInput" placeholder="Search event, artist, venue..." 
+                               class="w-full pl-9 pr-3 py-1.5 bg-gray-900 border border-gray-800 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-red-500">
+                        <svg class="w-4 h-4 text-gray-500 absolute left-3 top-2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                    </div>
+
+                    <select id="resaleSortSelect" class="bg-gray-900 border border-gray-800 rounded-xl px-3 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-red-500 cursor-pointer">
+                        <option value="date-asc">Soonest Date</option>
+                        <option value="price-asc">Price: Low to High</option>
+                        <option value="price-desc">Price: High to Low</option>
+                        <option value="markup-asc">Lowest Markup (Best Deal)</option>
+                    </select>
+                </div>
+
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Resale Ticket Listings Grid -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        
+        <div class="flex items-center justify-between">
+            <div>
+                <h2 class="text-xl font-black text-white tracking-tight">Verified Resale Tickets on Quai</h2>
+                <p class="text-xs text-gray-400 mt-0.5">Tickets held in decentralized escrow on Cyprus-1 zone. 100% money-back & anti-scalp guaranteed.</p>
+            </div>
+            <span id="listingsCountText" class="text-xs font-mono text-gray-400">Loading listings...</span>
+        </div>
+
+        <!-- Grid Container -->
+        <div id="resaleGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- Dynamically populated by JS -->
+        </div>
+
+        <!-- Empty State -->
+        <div id="resaleEmptyState" class="hidden py-16 text-center glass-surface rounded-3xl border border-gray-800 space-y-3">
+            <div class="w-14 h-14 rounded-2xl bg-neutral-900 border border-white/10 text-neutral-400 flex items-center justify-center mx-auto">
+                <svg class="w-6 h-6 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/></svg>
+            </div>
+            <h3 class="text-base font-bold text-white">No Tickets Match Your Filter</h3>
+            <p class="text-xs text-gray-400 max-w-sm mx-auto">Try clearing search terms or be the first fan to list your extra ticket on Quai Network.</p>
+            <button id="emptyStateSellBtn" class="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-md transition-all">
+                List Ticket for Resale
+            </button>
+        </div>
+
+    </main>
+
+    <!-- ======================================================== -->
+    <!-- MODAL 1: SELL / LIST A TICKET ON QUAI                    -->
+    <!-- ======================================================== -->
+    <div id="listResaleModal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto hidden">
+        <div class="glass-surface border border-red-500/40 rounded-3xl max-w-xl w-full p-6 shadow-2xl relative my-auto space-y-5">
+            <button id="closeSellModalBtn" class="absolute top-5 right-5 w-8 h-8 rounded-full bg-gray-900 border border-gray-800 text-gray-400 hover:text-white flex items-center justify-center text-xs transition-all">✕</button>
+
+            <div>
+                <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-600/20 text-red-400 border border-red-500/30 text-[10px] font-mono mb-2">
+                    QUAI NETWORK RESALE LISTING
+                </div>
+                <h3 class="text-2xl font-black text-white">List Your Ticket for Resale</h3>
+                <p class="text-xs text-gray-400 mt-1">Select an eligible ticket you own, set your price in QUAI, and confirm the listing.</p>
+            </div>
+
+            <!-- Step 1: Select Eligible Ticket -->
+            <div class="space-y-2">
+                <label class="block text-xs font-bold text-gray-300 uppercase tracking-wider">1. Select Owned Ticket</label>
+                <div id="ownedTicketsSelectList" class="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    <!-- Populated dynamically with user's genuine bookings -->
+                </div>
+            </div>
+
+            <!-- Step 2: Price Setting with Anti-Scalping Rules -->
+            <div id="resalePricingSection" class="hidden space-y-3 pt-2 border-t border-gray-800">
+                <label class="block text-xs font-bold text-gray-300 uppercase tracking-wider">2. Set Resale Price (QUAI)</label>
+                
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="p-3 rounded-xl bg-gray-900 border border-gray-800">
+                        <span class="text-[10px] text-gray-400 block font-mono">ORIGINAL FACE VALUE</span>
+                        <div class="text-sm font-bold text-white mt-1">
+                            <span id="selectedTicketFaceInr">₹0</span>
+                            <span class="text-xs text-gray-400 font-normal">(≈ <span id="selectedTicketFaceQuai">0.00</span> QUAI)</span>
+                        </div>
+                    </div>
+
+                    <div class="p-3 rounded-xl bg-amber-950/40 border border-amber-500/40">
+                        <span class="text-[10px] text-amber-300 block font-mono">FAIR PRICE CAP (MAX 110%)</span>
+                        <div class="text-sm font-bold text-amber-300 mt-1">
+                            <span id="selectedTicketMaxQuai">0.00</span> QUAI
+                            <span class="text-[10px] text-amber-400/80 font-normal">Max Allowed</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Input Price Field -->
+                <div>
+                    <div class="relative">
+                        <input type="number" id="inputResalePriceQuai" step="0.1" min="0.1" placeholder="Enter resale price in QUAI"
+                               class="w-full px-4 py-3 bg-black/60 border border-gray-700 rounded-xl text-base font-bold text-white focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500">
+                        <span class="absolute right-4 top-3.5 text-xs font-mono font-bold text-red-400">QUAI</span>
+                    </div>
+                    <div class="flex items-center justify-between text-[11px] text-gray-400 mt-1.5 px-1 font-mono">
+                        <span>Approx. in INR: <strong id="calculatedInrEstimate" class="text-white">₹0</strong></span>
+                        <span id="priceMarkupIndicator" class="text-emerald-400 font-bold">100% of Face Value</span>
+                    </div>
+                    <p id="priceErrorNotice" class="hidden mt-1.5 text-xs text-red-400 font-semibold"></p>
+                </div>
+
+                <!-- Step 3: Breakdown of Proceeds -->
+                <div class="p-3.5 rounded-2xl bg-gray-900/80 border border-gray-800 space-y-2 text-xs">
+                    <div class="flex items-center justify-between text-gray-400">
+                        <span>Buyer Total Price:</span>
+                        <span id="breakdownBuyerPrice" class="font-mono text-white font-bold">0.00 QUAI</span>
+                    </div>
+                    <div class="flex items-center justify-between text-gray-400">
+                        <span>Platform Fee (2.5%):</span>
+                        <span id="breakdownPlatformFee" class="font-mono text-gray-400">-0.00 QUAI</span>
+                    </div>
+                    <div class="flex items-center justify-between text-gray-400">
+                        <span>Artist/Creator Royalty (5.0%):</span>
+                        <span id="breakdownRoyaltyFee" class="font-mono text-gray-400">-0.00 QUAI</span>
+                    </div>
+                    <div class="pt-2 border-t border-gray-800 flex items-center justify-between text-sm font-bold text-white">
+                        <span class="text-emerald-400">You Receive (Net Payout):</span>
+                        <span id="breakdownNetPayout" class="font-mono text-emerald-400 text-base">0.00 QUAI</span>
+                    </div>
+                </div>
+
+                <!-- Confirm Listing CTA -->
+                <button id="confirmPublishListingBtn" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 hover:from-red-500 text-white font-black text-sm shadow-xl shadow-red-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer">
+                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    <span>Publish Listing on Quai (Cyprus-1)</span>
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- MODAL 2: BUY RESALE TICKET (QUAI SETTLEMENT & RE-BIND)   -->
+    <!-- ======================================================== -->
+    <div id="buyResaleModal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto hidden">
+        <div class="glass-surface border border-red-500/40 rounded-3xl max-w-lg w-full p-6 shadow-2xl relative my-auto space-y-5">
+            <button id="closeBuyModalBtn" class="absolute top-5 right-5 w-8 h-8 rounded-full bg-gray-900 border border-gray-800 text-gray-400 hover:text-white flex items-center justify-center text-xs transition-all">✕</button>
+
+            <div>
+                <span class="px-2.5 py-0.5 rounded-full bg-red-600/20 text-red-400 border border-red-500/30 text-[10px] font-mono">
+                    QUAI BLOCKCHAIN SECONDARY PURCHASE
+                </span>
+                <h3 id="buyModalTitle" class="text-2xl font-black text-white mt-1">Taylor Swift | The Eras Tour</h3>
+                <p id="buyModalSubtitle" class="text-xs text-gray-400">Wembley Stadium, London • Seat: FL-A14</p>
+            </div>
+
+            <!-- Price & Fee Summary Box -->
+            <div class="p-4 rounded-2xl bg-black/60 border border-gray-800 space-y-2">
+                <div class="flex items-center justify-between text-xs text-gray-400">
+                    <span>Original Face Value:</span>
+                    <span id="buyModalFaceVal" class="font-mono text-gray-300">₹9,500 (38.0 QUAI)</span>
+                </div>
+                <div class="flex items-center justify-between text-sm font-bold text-white">
+                    <span>Quai Resale Price:</span>
+                    <span id="buyModalResalePrice" class="font-mono text-amber-400 text-lg">40.5 QUAI</span>
+                </div>
+                <div class="flex items-center justify-between text-[11px] text-gray-400">
+                    <span>Estimated INR:</span>
+                    <span id="buyModalInrEstimate" class="font-mono text-gray-300">₹10,125</span>
+                </div>
+                <div class="pt-2 border-t border-gray-800 flex items-center justify-between text-[11px] font-mono text-emerald-400">
+                    <span>Anti-Scalp Fair Price:</span>
+                    <span>Verified (106.5% Cap OK) ✓</span>
+                </div>
+            </div>
+
+            <!-- Biometric Re-Binding Step -->
+            <div class="p-4 rounded-2xl bg-red-950/30 border border-red-500/30 space-y-3">
+                <div class="flex items-center gap-2 text-xs font-bold text-white">
+                    <span class="w-2 h-2 rounded-full bg-red-400 animate-pulse"></span>
+                    <span>Biometric Identity Re-Binding</span>
+                </div>
+                <p class="text-[11px] text-gray-300 leading-relaxed">
+                    Upon purchasing this secondary ticket, the original seller's biometric key is revoked on-chain and your facial commitment is registered. Only you will be able to unlock the venue turnstile.
+                </p>
+                <div class="flex items-center gap-2 p-2 rounded-xl bg-black/50 border border-gray-800">
+                    <img id="buyModalUserAvatar" src="https://via.placeholder.com/40" class="w-8 h-8 rounded-lg object-cover border border-emerald-400">
+                    <div class="text-xs">
+                        <span class="text-gray-400 block text-[10px]">NEW TICKET HOLDER:</span>
+                        <strong id="buyModalUserName" class="text-white">Sign In to Continue</strong>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Buy Action Buttons -->
+            <div class="space-y-2">
+                <button id="confirmQuaiPurchaseBtn" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 hover:from-red-500 text-white font-black text-sm shadow-xl shadow-red-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                    <span>Pay with QUAI & Claim Ticket</span>
+                </button>
+                <p class="text-[10px] text-center text-gray-500 font-mono">Consensus: Cyprus-1 Shard • Gas: ~0.0002 QUAI</p>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- MODAL 3: MY ACTIVE RESALE LISTINGS DRAWER                -->
+    <!-- ======================================================== -->
+    <div id="myListingsModal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto hidden">
+        <div class="glass-surface border border-gray-800 rounded-3xl max-w-2xl w-full p-6 shadow-2xl relative space-y-4">
+            <button id="closeMyListingsBtn" class="absolute top-5 right-5 w-8 h-8 rounded-full bg-gray-900 border border-gray-800 text-gray-400 hover:text-white flex items-center justify-center text-xs transition-all">✕</button>
+
+            <div>
+                <h3 class="text-xl font-black text-white">My Active Resale Listings</h3>
+                <p class="text-xs text-gray-400">Tickets you have listed on Quai Network. You can cancel any listing before it sells.</p>
+            </div>
+
+            <div id="myActiveListingsContainer" class="space-y-3 max-h-96 overflow-y-auto pr-1">
+                <!-- Dynamically loaded -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="border-t border-gray-800 bg-gray-950/80 py-8 text-center text-xs text-gray-500 space-y-2">
+        <div class="flex items-center justify-center gap-4 text-gray-400 font-medium">
+            <a href="tickets.html" class="hover:text-white">Primary Marketplace</a>
+            <span>•</span>
+            <a href="resale.html" class="text-red-400 hover:text-red-300 font-bold">Quai Resale Hub</a>
+            <span>•</span>
+            <a href="onboarding.html" class="hover:text-white">Biometric FastTrack</a>
+            <span>•</span>
+            <a href="guard.html" class="hover:text-white">Gate Security Console</a>
+        </div>
+        <p>TruePass Decentralized Resale Hub — Powered by Quai Network Multi-Shard Architecture (Cyprus-1 Shard 0x00).</p>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="js/ui-modal.js"></script>
+    <script src="js/audio-feedback.js"></script>
+    <script src="js/supabase-client.js"></script>
+    <script src="js/face-recognition-sdk.js"></script>
+    <script src="js/quai-resale-client.js"></script>
+
+    <!-- Resale UI Page Controller Script -->
+    <script>
+    (function () {
+        'use strict';
+
+        let currentCategory = 'all';
+        let currentSearch = '';
+        let currentSort = 'date-asc';
+        let selectedTicketForListing = null;
+        let selectedListingForPurchase = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initAuthSession();
+            renderListings();
+            wireEventListeners();
+            updateMyListingsBadge();
+        });
+
+        // Initialize user profile from local storage session
+        function initAuthSession() {
+            let user = null;
+            try {
+                const s = localStorage.getItem('truepass_active_session') || localStorage.getItem('truepass_onboarded_profile');
+                if (s) user = JSON.parse(s);
+            } catch (e) {}
+
+            const userNav = document.getElementById('resaleUserNav');
+            const userAvatar = document.getElementById('resaleUserAvatar');
+            const userName = document.getElementById('resaleUserName');
+
+            if (user && user.name) {
+                if (userNav) userNav.classList.remove('hidden');
+                if (userAvatar) userAvatar.src = user.photo || 'https://via.placeholder.com/80';
+                if (userName) userName.textContent = user.name;
+            }
+        }
+
+        window.resaleSignOut = function () {
+            localStorage.removeItem('truepass_active_session');
+            localStorage.removeItem('truepass_onboarded_profile');
+            sessionStorage.clear();
+            window.location.href = 'index.html';
+        };
+
+        function getActiveUser() {
+            try {
+                const s = localStorage.getItem('truepass_active_session') || localStorage.getItem('truepass_onboarded_profile');
+                return s ? JSON.parse(s) : null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        // Render listings on the grid
+        function renderListings() {
+            const grid = document.getElementById('resaleGrid');
+            const empty = document.getElementById('resaleEmptyState');
+            const countText = document.getElementById('listingsCountText');
+            if (!grid) return;
+
+            const listings = window.quaiResale.queryListings({
+                category: currentCategory,
+                search: currentSearch,
+                sort: currentSort
+            });
+
+            if (countText) countText.textContent = `${listings.length} tickets available`;
+
+            if (listings.length === 0) {
+                grid.innerHTML = '';
+                if (empty) empty.classList.remove('hidden');
+                return;
+            }
+
+            if (empty) empty.classList.add('hidden');
+
+            grid.innerHTML = listings.map(l => {
+                const markupClass = l.markupPercent > 105 ? 'text-amber-400 bg-amber-950/60 border-amber-500/30' : 'text-emerald-400 bg-emerald-950/60 border-emerald-500/30';
+                const markupBadgeText = l.markupPercent <= 100 ? 'Face Value Deal' : `+${(l.markupPercent - 100).toFixed(1)}% vs Face Value`;
+
+                return `
+                    <div class="glass-surface rounded-3xl overflow-hidden border border-gray-800 hover:border-red-500/50 transition-all duration-300 flex flex-col group shadow-xl hover:shadow-red-600/10">
+                        
+                        <!-- Top Header with Event Banner -->
+                        <div class="p-5 pb-4 space-y-2 border-b border-gray-800/80 relative">
+                            <div class="flex items-center justify-between">
+                                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase ${markupClass} border">
+                                    ${markupBadgeText}
+                                </span>
+                                <span class="text-[10px] font-mono text-gray-400 flex items-center gap-1">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                    Quai Cyprus-1
+                                </span>
+                            </div>
+
+                            <h3 class="text-lg font-black text-white group-hover:text-red-400 transition-colors line-clamp-1">
+                                ${l.eventTitle}
+                            </h3>
+                            <p class="text-xs text-gray-400 flex items-center gap-1.5">
+                                <svg class="w-3.5 h-3.5 text-neutral-500 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"/></svg>
+                                <span>${l.venue}</span>
+                            </p>
+                        </div>
+
+                        <!-- Ticket Specifics -->
+                        <div class="p-5 flex-1 space-y-3.5 text-xs">
+                            <div class="grid grid-cols-2 gap-2 text-gray-300">
+                                <div class="p-2.5 rounded-xl bg-black/40 border border-gray-800/80">
+                                    <span class="text-[10px] text-gray-500 block uppercase font-mono">Date & Showtime</span>
+                                    <strong class="text-white text-xs block mt-0.5">${l.date} • ${l.time}</strong>
+                                </div>
+                                <div class="p-2.5 rounded-xl bg-black/40 border border-gray-800/80">
+                                    <span class="text-[10px] text-gray-500 block uppercase font-mono">Seat / Category</span>
+                                    <strong class="text-white text-xs block mt-0.5">${l.seatCategory || l.seats.join(', ')}</strong>
+                                </div>
+                            </div>
+
+                            <!-- Seller Info -->
+                            <div class="flex items-center justify-between p-2.5 rounded-xl bg-gray-900/60 border border-gray-800 text-[11px]">
+                                <span class="text-gray-400">Seller: <strong class="text-white">${l.sellerName}</strong></span>
+                                <span class="font-mono text-gray-500 text-[10px]">${l.sellerAddress ? l.sellerAddress.substring(0, 6) + '...' + l.sellerAddress.substring(38) : '0x00...'}</span>
+                            </div>
+
+                            <!-- Pricing Breakdown -->
+                            <div class="pt-2 border-t border-gray-800 flex items-center justify-between">
+                                <div>
+                                    <span class="text-[10px] text-gray-400 block font-mono">RESALE PRICE</span>
+                                    <div class="flex items-baseline gap-1.5">
+                                        <span class="text-xl font-black text-white font-mono">${l.resalePriceQuai}</span>
+                                        <span class="text-xs font-bold text-red-400 font-mono">QUAI</span>
+                                    </div>
+                                    <span class="text-[10px] text-gray-500 block">≈ ₹${l.resalePriceInr.toLocaleString()}</span>
+                                </div>
+
+                                <div class="text-right">
+                                    <span class="text-[10px] text-gray-500 block font-mono">ORIGINAL</span>
+                                    <span class="text-xs text-gray-400 line-through">₹${l.originalPriceInr.toLocaleString()}</span>
+                                    <span class="text-[10px] text-gray-500 block font-mono">(${l.originalPriceQuai} QUAI)</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Purchase Button -->
+                        <div class="p-5 pt-0">
+                            <button onclick="window.openBuyResaleModal('${l.listingId}')" class="w-full py-3 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 text-white font-bold text-xs shadow-lg shadow-red-600/25 flex items-center justify-center gap-1.5 transition-all cursor-pointer">
+                                <span>Buy Ticket with QUAI</span>
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                            </button>
+                        </div>
+
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Open purchase modal
+        window.openBuyResaleModal = function (listingId) {
+            const listings = window.quaiResale.getAllListings();
+            const found = listings.find(l => l.listingId === listingId);
+            if (!found) return;
+
+            selectedListingForPurchase = found;
+            const modal = document.getElementById('buyResaleModal');
+            const title = document.getElementById('buyModalTitle');
+            const sub = document.getElementById('buyModalSubtitle');
+            const faceVal = document.getElementById('buyModalFaceVal');
+            const resalePrice = document.getElementById('buyModalResalePrice');
+            const inrEst = document.getElementById('buyModalInrEstimate');
+            const userAvatar = document.getElementById('buyModalUserAvatar');
+            const userName = document.getElementById('buyModalUserName');
+
+            const activeUser = getActiveUser();
+            if (activeUser && activeUser.name) {
+                if (userAvatar) userAvatar.src = activeUser.photo || 'https://via.placeholder.com/40';
+                if (userName) userName.textContent = `${activeUser.name} (Ready for Biometric Re-Bind)`;
+            } else {
+                if (userName) userName.textContent = 'Please sign in to complete purchase';
+            }
+
+            if (title) title.textContent = found.eventTitle;
+            if (sub) sub.textContent = `${found.venue} • Seats: ${found.seatCategory || found.seats.join(', ')}`;
+            if (faceVal) faceVal.textContent = `₹${found.originalPriceInr.toLocaleString()} (${found.originalPriceQuai} QUAI)`;
+            if (resalePrice) resalePrice.textContent = `${found.resalePriceQuai} QUAI`;
+            if (inrEst) inrEst.textContent = `₹${found.resalePriceInr.toLocaleString()}`;
+
+            if (modal) modal.classList.remove('hidden');
+        };
+
+        // Open Sell / List modal
+        function openSellModal() {
+            const user = getActiveUser();
+            if (!user || !user.name) {
+                alert('Please sign in to TruePass first to verify your ticket ownership.');
+                window.location.href = 'onboarding.html?mode=login';
+                return;
+            }
+
+            // Populate user's eligible bookings
+            const listEl = document.getElementById('ownedTicketsSelectList');
+            const pricingSec = document.getElementById('resalePricingSection');
+            if (pricingSec) pricingSec.classList.add('hidden');
+            selectedTicketForListing = null;
+
+            let bookings = [];
+            try {
+                const raw = localStorage.getItem('truepass_user_bookings');
+                if (raw) bookings = JSON.parse(raw);
+            } catch (e) {}
+
+            // Filter out refunded, used, or already listed
+            const eligible = bookings.filter(b => b.status !== 'REFUNDED' && b.status !== 'USED' && !b.isListedForResale);
+
+            if (!listEl) return;
+
+            if (eligible.length === 0) {
+                listEl.innerHTML = `
+                    <div class="p-4 rounded-xl bg-gray-900 border border-gray-800 text-center text-xs text-gray-400">
+                        You do not have any active tickets eligible for resale.
+                        <div class="mt-2">
+                            <a href="tickets.html" class="text-red-400 hover:underline font-bold">Book a primary ticket &rarr;</a>
+                        </div>
+                    </div>
+                `;
+            } else {
+                listEl.innerHTML = eligible.map(b => `
+                    <div onclick="window.selectTicketForListing('${b.bookingId}')" id="ticketCard_${b.bookingId}" class="p-3 rounded-2xl bg-gray-900/90 border border-gray-800 hover:border-red-500/50 cursor-pointer transition-all flex items-center justify-between text-xs">
+                        <div>
+                            <span class="font-mono text-red-400 font-bold">${b.bookingId}</span>
+                            <h4 class="font-bold text-white text-sm">${b.eventTitle}</h4>
+                            <p class="text-gray-400 text-[11px]">${b.date} • Seats: ${b.seats.join(', ')} • ₹${b.totalAmount}</p>
+                        </div>
+                        <span class="px-2.5 py-1 rounded-xl bg-gray-800 text-gray-300 font-bold text-[11px]">Select &rarr;</span>
+                    </div>
+                `).join('');
+            }
+
+            const modal = document.getElementById('listResaleModal');
+            if (modal) modal.classList.remove('hidden');
+        }
+
+        window.selectTicketForListing = function (bookingId) {
+            let bookings = [];
+            try {
+                const raw = localStorage.getItem('truepass_user_bookings');
+                if (raw) bookings = JSON.parse(raw);
+            } catch (e) {}
+
+            const found = bookings.find(b => b.bookingId === bookingId);
+            if (!found) return;
+
+            selectedTicketForListing = found;
+
+            // Highlight selected card
+            document.querySelectorAll('[id^="ticketCard_"]').forEach(el => {
+                el.classList.remove('border-red-500', 'bg-red-950/20');
+            });
+            const selEl = document.getElementById(`ticketCard_${bookingId}`);
+            if (selEl) selEl.classList.add('border-red-500', 'bg-red-950/20');
+
+            const pricingSec = document.getElementById('resalePricingSection');
+            const faceInr = document.getElementById('selectedTicketFaceInr');
+            const faceQuai = document.getElementById('selectedTicketFaceQuai');
+            const maxQuai = document.getElementById('selectedTicketMaxQuai');
+            const inputPrice = document.getElementById('inputResalePriceQuai');
+
+            const origInr = parseFloat(found.totalAmount || 0);
+            const origQuai = parseFloat((origInr * window.quaiResale.config.inrToQuaiRate).toFixed(2));
+            const maxAllowed = parseFloat((origQuai * (window.quaiResale.config.maxMarkupPercent / 100)).toFixed(2));
+
+            if (faceInr) faceInr.textContent = `₹${origInr.toLocaleString()}`;
+            if (faceQuai) faceQuai.textContent = origQuai.toFixed(2);
+            if (maxQuai) maxQuai.textContent = maxAllowed.toFixed(2);
+            if (inputPrice) {
+                inputPrice.value = origQuai.toFixed(2);
+                updateBreakdown(origQuai);
+            }
+
+            if (pricingSec) pricingSec.classList.remove('hidden');
+        };
+
+        function updateBreakdown(askedPrice) {
+            const p = parseFloat(askedPrice) || 0;
+            const inrEst = Math.round(p / window.quaiResale.config.inrToQuaiRate);
+            const inrEl = document.getElementById('calculatedInrEstimate');
+            const markupEl = document.getElementById('priceMarkupIndicator');
+            const buyerEl = document.getElementById('breakdownBuyerPrice');
+            const platformEl = document.getElementById('breakdownPlatformFee');
+            const royaltyEl = document.getElementById('breakdownRoyaltyFee');
+            const netEl = document.getElementById('breakdownNetPayout');
+            const errNotice = document.getElementById('priceErrorNotice');
+
+            if (inrEl) inrEl.textContent = `₹${inrEst.toLocaleString()}`;
+
+            const origInr = parseFloat(selectedTicketForListing?.totalAmount || 0);
+            const origQuai = parseFloat((origInr * window.quaiResale.config.inrToQuaiRate).toFixed(2));
+            const maxAllowed = parseFloat((origQuai * (window.quaiResale.config.maxMarkupPercent / 100)).toFixed(2));
+
+            if (p > maxAllowed) {
+                if (errNotice) {
+                    errNotice.textContent = `Anti-Scalping Rule: Price exceeds fair cap of ${maxAllowed} QUAI (110% of face value).`;
+                    errNotice.classList.remove('hidden');
+                }
+            } else {
+                if (errNotice) errNotice.classList.add('hidden');
+            }
+
+            const pct = origQuai > 0 ? ((p / origQuai) * 100).toFixed(1) : 100;
+            if (markupEl) markupEl.textContent = `${pct}% of Face Value`;
+
+            const platformFee = parseFloat((p * (window.quaiResale.config.platformFeeBps / 10000)).toFixed(3));
+            const royaltyFee = parseFloat((p * (window.quaiResale.config.royaltyFeeBps / 10000)).toFixed(3));
+            const net = parseFloat((p - platformFee - royaltyFee).toFixed(3));
+
+            if (buyerEl) buyerEl.textContent = `${p.toFixed(2)} QUAI`;
+            if (platformEl) platformEl.textContent = `-${platformFee.toFixed(3)} QUAI`;
+            if (royaltyEl) royaltyEl.textContent = `-${royaltyFee.toFixed(3)} QUAI`;
+            if (netEl) netEl.textContent = `${net.toFixed(2)} QUAI`;
+        }
+
+        // Wire event listeners
+        function wireEventListeners() {
+            // Category pills
+            document.querySelectorAll('.resale-cat-pill').forEach(pill => {
+                pill.addEventListener('click', () => {
+                    document.querySelectorAll('.resale-cat-pill').forEach(p => {
+                        p.classList.remove('active', 'bg-red-600', 'text-white');
+                        p.classList.add('bg-gray-900', 'text-gray-300');
+                    });
+                    pill.classList.add('active', 'bg-red-600', 'text-white');
+                    pill.classList.remove('bg-gray-900', 'text-gray-300');
+                    currentCategory = pill.dataset.cat || 'all';
+                    renderListings();
+                });
+            });
+
+            // Search input
+            const searchInput = document.getElementById('resaleSearchInput');
+            if (searchInput) {
+                searchInput.addEventListener('input', (e) => {
+                    currentSearch = e.target.value;
+                    renderListings();
+                });
+            }
+
+            // Sort select
+            const sortSelect = document.getElementById('resaleSortSelect');
+            if (sortSelect) {
+                sortSelect.addEventListener('change', (e) => {
+                    currentSort = e.target.value;
+                    renderListings();
+                });
+            }
+
+            // Wallet button
+            const walletBtn = document.getElementById('connectQuaiWalletBtn');
+            if (walletBtn) {
+                walletBtn.addEventListener('click', async () => {
+                    await window.quaiResale.connectWallet();
+                });
+            }
+
+            // Wallet State Listener
+            window.quaiResale.on('wallet-updated', (state) => {
+                const btnText = document.getElementById('quaiWalletBtnText');
+                const balBadge = document.getElementById('quaiWalletBalanceBadge');
+                if (state.isConnected && state.address) {
+                    const shortAddr = `${state.address.substring(0, 6)}...${state.address.substring(state.address.length - 4)}`;
+                    if (btnText) btnText.textContent = shortAddr;
+                    if (balBadge) {
+                        balBadge.textContent = `${state.balance} QUAI`;
+                        balBadge.classList.remove('hidden');
+                    }
+                } else {
+                    if (btnText) btnText.textContent = 'Connect Pelagus Wallet';
+                    if (balBadge) balBadge.classList.add('hidden');
+                }
+            });
+
+            // Sell Modal Buttons
+            const openSellNav = document.getElementById('openSellModalNavBtn');
+            const openSellHero = document.getElementById('openSellModalHeroBtn');
+            const emptySell = document.getElementById('emptyStateSellBtn');
+            const closeSell = document.getElementById('closeSellModalBtn');
+
+            if (openSellNav) openSellNav.addEventListener('click', openSellModal);
+            if (openSellHero) openSellHero.addEventListener('click', openSellModal);
+            if (emptySell) emptySell.addEventListener('click', openSellModal);
+            if (closeSell) {
+                closeSell.addEventListener('click', () => {
+                    document.getElementById('listResaleModal')?.classList.add('hidden');
+                });
+            }
+
+            // Input price listener
+            const inputPrice = document.getElementById('inputResalePriceQuai');
+            if (inputPrice) {
+                inputPrice.addEventListener('input', (e) => {
+                    updateBreakdown(e.target.value);
+                });
+            }
+
+            // Publish Listing CTA
+            const publishBtn = document.getElementById('confirmPublishListingBtn');
+            if (publishBtn) {
+                publishBtn.addEventListener('click', async () => {
+                    if (!selectedTicketForListing) return;
+                    const asked = document.getElementById('inputResalePriceQuai')?.value;
+                    const user = getActiveUser();
+
+                    try {
+                        publishBtn.disabled = true;
+                        publishBtn.textContent = 'Signing Quai Transaction (Cyprus-1)...';
+
+                        await window.quaiResale.listTicketForResale({
+                            booking: selectedTicketForListing,
+                            resalePriceQuai: asked,
+                            sellerName: user?.name || selectedTicketForListing.buyerName,
+                            sellerAddress: window.quaiResale.walletState.address
+                        });
+
+                        alert(`Ticket ${selectedTicketForListing.bookingId} successfully listed on Quai Network!`);
+                        document.getElementById('listResaleModal')?.classList.add('hidden');
+                        renderListings();
+                        updateMyListingsBadge();
+                    } catch (err) {
+                        alert(err.message);
+                    } finally {
+                        publishBtn.disabled = false;
+                        publishBtn.innerHTML = `
+                            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                            <span>Publish Listing on Quai (Cyprus-1)</span>
+                        `;
+                    }
+                });
+            }
+
+            // Buy Modal Close
+            const closeBuy = document.getElementById('closeBuyModalBtn');
+            if (closeBuy) {
+                closeBuy.addEventListener('click', () => {
+                    document.getElementById('buyResaleModal')?.classList.add('hidden');
+                });
+            }
+
+            // Confirm Buy CTA
+            const confirmBuyBtn = document.getElementById('confirmQuaiPurchaseBtn');
+            if (confirmBuyBtn) {
+                confirmBuyBtn.addEventListener('click', async () => {
+                    if (!selectedListingForPurchase) return;
+                    const activeUser = getActiveUser();
+                    if (!activeUser || !activeUser.name) {
+                        alert('Please sign in or register before completing the biometric purchase.');
+                        window.location.href = 'onboarding.html?mode=login';
+                        return;
+                    }
+
+                    try {
+                        confirmBuyBtn.disabled = true;
+                        confirmBuyBtn.textContent = 'Settling on Quai Network & Re-Binding Biometrics...';
+
+                        // Ephemeral commitment generated for buyer
+                        const fakeCommitment = `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`;
+
+                        const res = await window.quaiResale.buyResaleTicket({
+                            listingId: selectedListingForPurchase.listingId,
+                            buyerProfile: activeUser,
+                            buyerBiometricCommitment: fakeCommitment
+                        });
+
+                        alert(`Purchase Confirmed! Ticket re-bound to your face on Quai Network!\nTx Hash: ${res.quaiTxHash}`);
+                        document.getElementById('buyResaleModal')?.classList.add('hidden');
+                        renderListings();
+                    } catch (err) {
+                        alert(err.message);
+                    } finally {
+                        confirmBuyBtn.disabled = false;
+                        confirmBuyBtn.textContent = 'Pay with QUAI & Claim Ticket';
+                    }
+                });
+            }
+
+            // My Listings Drawer
+            const myListingsBtn = document.getElementById('myListingsBtn');
+            const closeMyListings = document.getElementById('closeMyListingsBtn');
+            if (myListingsBtn) myListingsBtn.addEventListener('click', openMyListingsModal);
+            if (closeMyListings) {
+                closeMyListings.addEventListener('click', () => {
+                    document.getElementById('myListingsModal')?.classList.add('hidden');
+                });
+            }
+        }
+
+        function openMyListingsModal() {
+            const container = document.getElementById('myActiveListingsContainer');
+            const modal = document.getElementById('myListingsModal');
+            if (!container) return;
+
+            const user = getActiveUser();
+            const all = window.quaiResale.getAllListings();
+            const myList = all.filter(l => l.sellerName === user?.name && l.isActive && !l.isSold);
+
+            if (myList.length === 0) {
+                container.innerHTML = `
+                    <div class="py-12 text-center text-gray-500 text-xs">
+                        You do not have any active resale listings right now.
+                    </div>
+                `;
+            } else {
+                container.innerHTML = myList.map(l => `
+                    <div class="p-4 rounded-2xl glass-surface border border-gray-800 flex items-center justify-between text-xs">
+                        <div>
+                            <span class="font-mono text-red-400 font-bold">${l.listingId}</span>
+                            <h4 class="font-bold text-white text-sm">${l.eventTitle}</h4>
+                            <p class="text-gray-400">${l.date} • Seats: ${l.seatCategory || l.seats.join(', ')} • Price: <strong class="text-white">${l.resalePriceQuai} QUAI</strong> (₹${l.resalePriceInr.toLocaleString()})</p>
+                            <span class="text-[10px] text-emerald-400 font-mono">Quai Verified (Cyprus-1)</span>
+                        </div>
+                        <button onclick="window.cancelListingAction('${l.listingId}')" class="px-3 py-1.5 rounded-xl bg-red-950/80 hover:bg-red-900 border border-red-500/50 text-red-300 font-bold transition-all">
+                            Delist / Cancel
+                        </button>
+                    </div>
+                `).join('');
+            }
+
+            if (modal) modal.classList.remove('hidden');
+        }
+
+        window.cancelListingAction = async function (listingId) {
+            if (!confirm('Are you sure you want to cancel this listing and return the ticket to your active wallet?')) return;
+            try {
+                await window.quaiResale.cancelResaleListing(listingId);
+                openMyListingsModal();
+                renderListings();
+                updateMyListingsBadge();
+            } catch (err) {
+                alert(err.message);
+            }
+        };
+
+        function updateMyListingsBadge() {
+            const badge = document.getElementById('myListingsBadge');
+            const user = getActiveUser();
+            if (!badge || !user) return;
+            const all = window.quaiResale.getAllListings();
+            const count = all.filter(l => l.sellerName === user.name && l.isActive && !l.isSold).length;
+            if (count > 0) {
+                badge.textContent = count;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+
+    })();
+    </script>
+</body>
+</html>
