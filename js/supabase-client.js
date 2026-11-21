@@ -1,4 +1,4 @@
-﻿/**
+/**
  * SupabaseCloudSync (v3.0)
  * Connects the Facial Recognition App & TruePass Ticketing directly to Supabase Cloud Database & Storage.
  * Supports Onboarding Profiles, 128-d Biometric Embeddings, Ticket Sync, and Ticket Refunds.
@@ -581,20 +581,27 @@ class SupabaseCloudSync {
     }
 
     /**
-     * Fetch all tickets for a specific person
+     * Fetch all tickets for a specific person by Name and/or Email (Supports Remote Cloud Sync)
      */
-    async fetchTicketsByPerson(personName) {
-        if (!personName) return [];
+    async fetchTicketsByPerson(personName, email = '') {
+        if (!personName && !email) return [];
         await this.ensureClientReady();
+
+        const cleanName = (personName || '').trim();
+        const cleanEmail = (email || (cleanName.includes('@') ? cleanName : '')).trim();
 
         if (this.client) {
             try {
-                const { data, error } = await this.client
-                    .from('tickets')
-                    .select('*')
-                    .eq('buyer_name', personName)
-                    .order('created_at', { ascending: false });
+                let query = this.client.from('tickets').select('*');
+                if (cleanName && cleanEmail) {
+                    query = query.or(`buyer_name.eq.${cleanName},buyer_email.eq.${cleanEmail}`);
+                } else if (cleanEmail) {
+                    query = query.eq('buyer_email', cleanEmail);
+                } else {
+                    query = query.eq('buyer_name', cleanName);
+                }
 
+                const { data, error } = await query.order('created_at', { ascending: false });
                 if (!error && Array.isArray(data)) return data;
             } catch (e) {
                 console.warn('[Supabase Tickets] Fetch error:', e.message);
@@ -603,7 +610,15 @@ class SupabaseCloudSync {
 
         // Direct REST fallback
         try {
-            const res = await this._restRequest(`tickets?buyer_name=eq.${encodeURIComponent(personName)}&order=created_at.desc`);
+            let filter = '';
+            if (cleanName && cleanEmail) {
+                filter = `or=(buyer_name.eq.${encodeURIComponent(cleanName)},buyer_email.eq.${encodeURIComponent(cleanEmail)})`;
+            } else if (cleanEmail) {
+                filter = `buyer_email=eq.${encodeURIComponent(cleanEmail)}`;
+            } else {
+                filter = `buyer_name=eq.${encodeURIComponent(cleanName)}`;
+            }
+            const res = await this._restRequest(`tickets?${filter}&order=created_at.desc`);
             if (res.ok) {
                 const data = await res.json();
                 if (Array.isArray(data)) return data;
