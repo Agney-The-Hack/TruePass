@@ -12,11 +12,68 @@ class SupabaseCloudSync {
         this.url = localStorage.getItem('supabase_url') || DEFAULT_SUPABASE_URL;
         this.key = localStorage.getItem('supabase_key') || DEFAULT_SUPABASE_KEY;
         this.bucketName = 'face-photos';
-        this.isReady = false;
 
         if (this.url && this.key) {
             this.initClient(this.url, this.key);
         }
+    }
+
+    /**
+     * Dynamic getter: true if client is initialized or can be initialized right now
+     */
+    get isReady() {
+        return !!this.getClient();
+    }
+
+    /**
+     * Safely resolve or lazy-initialize Supabase client
+     */
+    getClient() {
+        if (this.client) return this.client;
+        if (typeof window !== 'undefined' && window.supabase && typeof window.supabase.createClient === 'function') {
+            const url = (this.url || localStorage.getItem('supabase_url') || DEFAULT_SUPABASE_URL).trim().replace(/\/+$/, '');
+            const key = (this.key || localStorage.getItem('supabase_key') || DEFAULT_SUPABASE_KEY).trim();
+            if (url && key) {
+                try {
+                    this.url = url;
+                    this.key = key;
+                    this.client = window.supabase.createClient(this.url, this.key);
+                    console.log('[Supabase] Dynamic client initialized for:', this.url);
+                    return this.client;
+                } catch (e) {
+                    console.warn('[Supabase] Dynamic client init note:', e);
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Wait for Supabase CDN or client to become ready (with timeout)
+     */
+    async ensureClientReady(maxWaitMs = 3500) {
+        if (this.getClient()) return this.client;
+        const start = Date.now();
+        while (Date.now() - start < maxWaitMs) {
+            if (this.getClient()) return this.client;
+            await new Promise(r => setTimeout(r, 60));
+        }
+        return this.getClient();
+    }
+
+    /**
+     * Native REST fallback: Direct fetch to Supabase PostgREST API
+     * Guarantees persistence even if the client CDN library was delayed or blocked.
+     */
+    async _restRequest(path, options = {}) {
+        const url = `${this.url.replace(/\/+$/, '')}/rest/v1/${path.replace(/^\/+/, '')}`;
+        const headers = {
+            'apikey': this.key,
+            'Authorization': `Bearer ${this.key}`,
+            'Content-Type': 'application/json',
+            ...(options.headers || {})
+        };
+        return fetch(url, { ...options, headers });
     }
 
     /**
@@ -29,36 +86,30 @@ class SupabaseCloudSync {
     initClient(url, key) {
         if (!url || !key) {
             this.client = null;
-            this.isReady = false;
             return false;
         }
 
-        if (typeof window.supabase === 'undefined' || !window.supabase.createClient) {
-            console.warn('[Supabase] Supabase JS library not loaded yet.');
-            return false;
-        }
+        this.url = url.trim().replace(/\/+$/, '');
+        this.key = key.trim();
+        localStorage.setItem('supabase_url', this.url);
+        localStorage.setItem('supabase_key', this.key);
 
-        try {
-            this.url = url.trim().replace(/\/+$/, '');
-            this.key = key.trim();
-            this.client = window.supabase.createClient(this.url, this.key);
-            this.isReady = true;
-
-            localStorage.setItem('supabase_url', this.url);
-            localStorage.setItem('supabase_key', this.key);
-            console.log('[Supabase] Client initialized for project:', this.url);
-            return true;
-        } catch (e) {
-            console.error('[Supabase] Init error:', e);
-            this.client = null;
-            this.isReady = false;
-            return false;
+        if (typeof window !== 'undefined' && window.supabase && typeof window.supabase.createClient === 'function') {
+            try {
+                this.client = window.supabase.createClient(this.url, this.key);
+                console.log('[Supabase] Client initialized for project:', this.url);
+                return true;
+            } catch (e) {
+                console.error('[Supabase] Init error:', e);
+                this.client = null;
+                return false;
+            }
         }
+        return false;
     }
 
     clearConfig() {
         this.client = null;
-        this.isReady = false;
         this.url = '';
         this.key = '';
         localStorage.removeItem('supabase_url');
@@ -69,27 +120,37 @@ class SupabaseCloudSync {
      * Test connection to Supabase database with latency metric
      */
     async testConnection() {
-        if (!this.client) {
-            return { success: false, message: 'Supabase URL or Key not configured.', latencyMs: 0 };
+        await this.ensureClientReady();
+        const t0 = performance.now();
+
+        if (this.client) {
+            try {
+                const { data, error } = await this.client
+                    .from('faces')
+                    .select('name')
+                    .limit(1);
+
+                const latencyMs = Math.round(performance.now() - t0);
+                if (error) {
+                    return { success: false, message: `Database error: ${error.message}`, latencyMs };
+                }
+                return { success: true, message: `Connected to Supabase Cloud (${latencyMs}ms)`, latencyMs };
+            } catch (err) {
+                // fall through to REST test
+            }
         }
 
-        const t0 = performance.now();
+        // Direct REST fallback test
         try {
-            const { data, error } = await this.client
-                .from('faces')
-                .select('name')
-                .limit(1);
-
+            const res = await this._restRequest('faces?select=name&limit=1');
             const latencyMs = Math.round(performance.now() - t0);
-
-            if (error) {
-                return { success: false, message: `Database error: ${error.message}. (Did you run the SQL schema?)`, latencyMs };
+            if (res.ok) {
+                return { success: true, message: `Connected to Supabase Cloud (${latencyMs}ms)`, latencyMs };
             }
-
-            return { success: true, message: `Connected to Supabase Cloud (${latencyMs}ms)`, latencyMs };
-        } catch (err) {
+            return { success: false, message: `HTTP ${res.status}: Failed to reach Supabase`, latencyMs };
+        } catch (netErr) {
             const latencyMs = Math.round(performance.now() - t0);
-            return { success: false, message: `Connection failed: ${err.message}`, latencyMs };
+            return { success: false, message: `Connection failed: ${netErr.message}`, latencyMs };
         }
     }
 
@@ -212,60 +273,90 @@ class SupabaseCloudSync {
      * Save an Onboarding / Pre-registration Profile with ALL input fields to Supabase Cloud
      */
     async saveProfileToCloud({ name, email = '', phone = '', dob = '', idType = 'Passport', idNumber = '', loyaltyTier = 'Standard', descriptors = [], photo = '', notes = '' }) {
-        if (!this.client) return null;
+        if (!name || !name.trim()) return null;
+
+        await this.ensureClientReady();
 
         const t0 = performance.now();
-        let cloudPhotoUrl = photo;
-        if (photo && photo.startsWith('data:image')) {
-            cloudPhotoUrl = await this.uploadPhoto(photo, `profile_${name}`);
+        let cloudPhotoUrl = photo || '';
+        if (photo && photo.startsWith('data:image') && this.client) {
+            try {
+                cloudPhotoUrl = await this.uploadPhoto(photo, `profile_${name}`);
+            } catch (pErr) {
+                console.warn('[Supabase Photo Upload]', pErr);
+            }
         }
 
-        const serializedDescriptors = descriptors.map(d => Array.from(d));
+        const serializedDescriptors = (descriptors || []).map(d => Array.isArray(d) ? d : Array.from(d));
 
         // 1. Save all onboarding intake fields into public.profiles
         const profileRecord = {
             name: name.trim(),
-            email: email.trim(),
-            phone: phone.trim(),
-            dob: dob.trim(),
-            id_type: idType,
-            id_number: idNumber.trim(),
-            loyalty_tier: loyaltyTier,
+            email: (email || '').trim(),
+            phone: (phone || '').trim(),
+            dob: (dob || '').trim(),
+            id_type: idType || 'Passport',
+            id_number: (idNumber || '').trim(),
+            loyalty_tier: loyaltyTier || 'Standard',
             photo_url: cloudPhotoUrl,
-            notes: notes.trim(),
+            notes: (notes || '').trim(),
             descriptors: serializedDescriptors,
             updated_at: new Date().toISOString()
         };
 
         let profileSaved = false;
-        try {
-            const { error: profileErr } = await this.client
-                .from('profiles')
-                .upsert(profileRecord, { onConflict: 'name' });
+        if (this.client) {
+            try {
+                const { error: profileErr } = await this.client
+                    .from('profiles')
+                    .upsert(profileRecord, { onConflict: 'name' });
 
-            if (profileErr) {
-                console.warn('[Supabase Profiles] Upsert note:', profileErr.message);
-            } else {
-                profileSaved = true;
-                console.log(`[Supabase Profiles] Onboarding profile saved for: ${name}`);
+                if (!profileErr) {
+                    profileSaved = true;
+                    console.log(`[Supabase Profiles] Onboarding profile saved for: ${name}`);
+                } else {
+                    console.warn('[Supabase Profiles] Client upsert note:', profileErr.message);
+                }
+            } catch (e) {
+                console.warn('[Supabase Profiles] Error:', e.message);
             }
-        } catch (e) {
-            console.warn('[Supabase Profiles] Error:', e.message);
         }
 
-        // 2. Also register face biometric vector in public.faces for 1-second turnstile matching
+        // Direct REST fallback if client was not available or upsert failed
+        if (!profileSaved) {
+            try {
+                const res = await this._restRequest('profiles', {
+                    method: 'POST',
+                    headers: { 'Prefer': 'resolution=merge-duplicates,return=representation' },
+                    body: JSON.stringify(profileRecord)
+                });
+                if (res.ok) {
+                    profileSaved = true;
+                    console.log(`[Supabase Profiles] Profile saved via direct REST for: ${name}`);
+                } else {
+                    const text = await res.text();
+                    console.warn('[Supabase Profiles] REST fallback note:', res.status, text);
+                }
+            } catch (restErr) {
+                console.warn('[Supabase Profiles] REST network error:', restErr);
+            }
+        }
+
+        // 2. Only register face biometric vector in public.faces if biometric descriptors were actually captured!
         let faceSaved = false;
-        try {
-            await this.savePersonToCloud({
-                name: name.trim(),
-                role: `FastTrack Member (${loyaltyTier})`,
-                photo: cloudPhotoUrl,
-                descriptors: descriptors,
-                notes: `Email: ${email} | ID: ${idType} ${idNumber} | DOB: ${dob}`
-            });
-            faceSaved = true;
-        } catch (err) {
-            console.warn('[Supabase Faces] Sync warning:', err.message);
+        if (descriptors && descriptors.length > 0) {
+            try {
+                await this.savePersonToCloud({
+                    name: name.trim(),
+                    role: `FastTrack Member (${loyaltyTier})`,
+                    photo: cloudPhotoUrl,
+                    descriptors: descriptors,
+                    notes: `Email: ${email} | ID: ${idType} ${idNumber} | DOB: ${dob}`
+                });
+                faceSaved = true;
+            } catch (err) {
+                console.warn('[Supabase Faces] Sync warning:', err.message);
+            }
         }
 
         const latencyMs = Math.round(performance.now() - t0);
@@ -278,76 +369,145 @@ class SupabaseCloudSync {
     }
 
     /**
+     * Find a profile in Supabase Cloud by Name or Email
+     */
+    async findProfileInCloud(identifier) {
+        if (!identifier || !identifier.trim()) return null;
+        const clean = identifier.replace(/['"]/g, '').trim();
+
+        await this.ensureClientReady();
+
+        if (this.client) {
+            try {
+                const { data, error } = await this.client
+                    .from('profiles')
+                    .select('*')
+                    .or(`name.ilike.%${clean}%,email.ilike.%${clean}%`)
+                    .limit(1);
+
+                if (data && data.length > 0) return data[0];
+            } catch (e) {
+                console.warn('[Supabase findProfile client]', e);
+            }
+        }
+
+        // REST fallback
+        try {
+            const res = await this._restRequest(`profiles?or=(name.ilike.*${encodeURIComponent(clean)}*,email.ilike.*${encodeURIComponent(clean)}*)&limit=1`);
+            if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data) && data.length > 0) return data[0];
+            }
+        } catch (restErr) {}
+
+        return null;
+    }
+
+    /**
      * Save a Purchased Event Ticket to Supabase Cloud (public.tickets)
      */
     async saveTicketToCloud(ticket) {
-        if (!this.client) return null;
+        if (!ticket) return null;
+
+        await this.ensureClientReady();
 
         const t0 = performance.now();
         let cloudPhotoUrl = ticket.photoDataUrl || ticket.photo || '';
-        if (cloudPhotoUrl && cloudPhotoUrl.startsWith('data:image')) {
-            cloudPhotoUrl = await this.uploadPhoto(cloudPhotoUrl, `ticket_${ticket.bookingId || ticket.buyerName}`);
+        if (cloudPhotoUrl && cloudPhotoUrl.startsWith('data:image') && this.client) {
+            try {
+                cloudPhotoUrl = await this.uploadPhoto(cloudPhotoUrl, `ticket_${ticket.bookingId || ticket.buyerName}`);
+            } catch (pErr) {
+                console.warn('[Supabase Ticket Photo Upload]', pErr);
+            }
         }
 
+        const bookingId = ticket.bookingId || ticket.booking_id || ('TP-' + Math.floor(100000 + Math.random() * 900000));
         const ticketRecord = {
-            booking_id: ticket.bookingId,
-            event_id: ticket.eventId || '',
-            event_title: ticket.eventTitle,
+            booking_id: bookingId,
+            event_id: ticket.eventId || ticket.event_id || '',
+            event_title: ticket.eventTitle || ticket.event_title || 'TruePass Event',
             venue: ticket.venue || '',
-            event_date: ticket.date,
-            showtime: ticket.time,
+            event_date: ticket.date || ticket.event_date || '',
+            showtime: ticket.time || ticket.showtime || '',
             format: ticket.format || 'Standard',
-            seats: ticket.seats || [],
-            total_amount: parseFloat(ticket.totalAmount || 0),
-            buyer_name: ticket.buyerName,
-            buyer_email: ticket.buyerEmail || '',
-            buyer_phone: ticket.buyerPhone || '',
-            id_type: ticket.idType || '',
-            id_number: ticket.idNumber || '',
-            loyalty_tier: ticket.loyaltyTier || 'Standard',
+            seats: Array.isArray(ticket.seats) ? ticket.seats : (ticket.seats ? [ticket.seats] : []),
+            total_amount: parseFloat(ticket.totalAmount || ticket.total_amount || 0),
+            buyer_name: ticket.buyerName || ticket.buyer_name || 'Guest',
+            buyer_email: ticket.buyerEmail || ticket.buyer_email || '',
+            buyer_phone: ticket.buyerPhone || ticket.buyer_phone || '',
+            id_type: ticket.idType || ticket.id_type || '',
+            id_number: ticket.idNumber || ticket.id_number || '',
+            loyalty_tier: ticket.loyaltyTier || ticket.loyalty_tier || 'Standard',
             photo_url: cloudPhotoUrl,
-            face_verified: !!ticket.faceVerified,
+            face_verified: !!(ticket.faceVerified || ticket.face_verified),
             status: ticket.status || 'CONFIRMED',
-            created_at: ticket.createdAt || new Date().toISOString()
+            created_at: ticket.createdAt || ticket.created_at || new Date().toISOString()
         };
 
-        try {
-            const { data, error } = await this.client
-                .from('tickets')
-                .upsert(ticketRecord, { onConflict: 'booking_id' })
-                .select();
+        let ticketSaved = false;
+        if (this.client) {
+            try {
+                const { data, error } = await this.client
+                    .from('tickets')
+                    .upsert(ticketRecord, { onConflict: 'booking_id' })
+                    .select();
 
-            if (error) {
-                console.warn('[Supabase Tickets] Insert note:', error.message);
-            } else {
-                console.log(`[Supabase] Ticket ${ticket.bookingId} synced to cloud!`);
+                if (!error) {
+                    ticketSaved = true;
+                    console.log(`[Supabase] Ticket ${bookingId} synced to cloud via client!`);
+                } else {
+                    console.warn('[Supabase Tickets] Insert note:', error.message);
+                }
+            } catch (e) {
+                console.warn('[Supabase Tickets] Error:', e.message);
             }
-        } catch (e) {
-            console.warn('[Supabase Tickets] Error:', e.message);
+        }
+
+        // Direct REST fallback if client was not available or upsert failed
+        if (!ticketSaved) {
+            try {
+                const res = await this._restRequest('tickets', {
+                    method: 'POST',
+                    headers: { 'Prefer': 'resolution=merge-duplicates,return=representation' },
+                    body: JSON.stringify(ticketRecord)
+                });
+                if (res.ok) {
+                    ticketSaved = true;
+                    console.log(`[Supabase] Ticket ${bookingId} synced to cloud via direct REST!`);
+                } else {
+                    const text = await res.text();
+                    console.warn('[Supabase Tickets] REST fallback note:', res.status, text);
+                }
+            } catch (restErr) {
+                console.warn('[Supabase Tickets] REST network error:', restErr);
+            }
         }
 
         // Also update role in public.faces to reflect current ticket
-        try {
-            const { data: existingPerson } = await this.client
-                .from('faces')
-                .select('*')
-                .eq('name', ticket.buyerName)
-                .single();
-
-            if (existingPerson) {
-                await this.client
+        if (this.client && ticketRecord.buyer_name) {
+            try {
+                const { data: existingPerson } = await this.client
                     .from('faces')
-                    .update({
-                        role: `Ticket Holder: ${ticket.eventTitle} (Seats: ${ticket.seats.join(', ')})`,
-                        notes: `Active Booking: ${ticket.bookingId} | Date: ${ticket.date}`,
-                        updated_at: new Date().toISOString()
-                    })
-                    .eq('name', ticket.buyerName);
-            }
-        } catch (err) {}
+                    .select('*')
+                    .eq('name', ticketRecord.buyer_name)
+                    .single();
+
+                if (existingPerson) {
+                    await this.client
+                        .from('faces')
+                        .update({
+                            role: `Ticket Holder: ${ticketRecord.event_title} (Seats: ${ticketRecord.seats.join(', ')})`,
+                            notes: `Active Booking: ${ticketRecord.booking_id} | Date: ${ticketRecord.event_date}`,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('name', ticketRecord.buyer_name);
+                }
+            } catch (err) {}
+        }
 
         const latencyMs = Math.round(performance.now() - t0);
         return {
+            success: ticketSaved,
             ticket: ticketRecord,
             latencyMs
         };
@@ -424,20 +584,33 @@ class SupabaseCloudSync {
      * Fetch all tickets for a specific person
      */
     async fetchTicketsByPerson(personName) {
-        if (!this.client) return [];
-        try {
-            const { data, error } = await this.client
-                .from('tickets')
-                .select('*')
-                .eq('buyer_name', personName)
-                .order('created_at', { ascending: false });
+        if (!personName) return [];
+        await this.ensureClientReady();
 
-            if (error) throw error;
-            return data || [];
-        } catch (e) {
-            console.warn('[Supabase Tickets] Fetch error:', e.message);
-            return [];
+        if (this.client) {
+            try {
+                const { data, error } = await this.client
+                    .from('tickets')
+                    .select('*')
+                    .eq('buyer_name', personName)
+                    .order('created_at', { ascending: false });
+
+                if (!error && Array.isArray(data)) return data;
+            } catch (e) {
+                console.warn('[Supabase Tickets] Fetch error:', e.message);
+            }
         }
+
+        // Direct REST fallback
+        try {
+            const res = await this._restRequest(`tickets?buyer_name=eq.${encodeURIComponent(personName)}&order=created_at.desc`);
+            if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data)) return data;
+            }
+        } catch (restErr) {}
+
+        return [];
     }
 
     /**

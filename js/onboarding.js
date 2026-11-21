@@ -368,7 +368,7 @@
 
             // 3. Remove Ticket Association & Mark Refunded in Supabase Cloud
             let cloudRefundResult = null;
-            if (window.supabaseSync && window.supabaseSync.isReady) {
+            if (window.supabaseSync) {
                 try {
                     cloudRefundResult = await window.supabaseSync.refundTicketInCloud(bookingId, currentProfile ? currentProfile.name : ticket.buyerName);
                     if (window.showToast) window.showToast(`Ticket #${bookingId} refunded in Supabase Cloud (${cloudRefundResult.latencyMs}ms)`, 'success');
@@ -450,7 +450,7 @@
 
             // 2. Sync Ticket to Supabase Cloud
             let cloudLatency = 0;
-            if (window.supabaseSync && window.supabaseSync.isReady) {
+            if (window.supabaseSync) {
                 try {
                     const res = await window.supabaseSync.saveTicketToCloud(ticket);
                     cloudLatency = res ? res.latencyMs : 0;
@@ -491,9 +491,7 @@
             renderLinkedTickets();
         },
 
-        signInWithFace: async function () {
-            startFaceIdLogin();
-        },
+        
 
         startNewEnrollment: function () {
             startNewEnrollment();
@@ -705,156 +703,8 @@
         }, 4000);
     }
 
-    // ========================================================
-    // SIGN IN WITH FACE ID
-    // ========================================================
-    async function startFaceIdLogin() {
-        const modal = document.getElementById('faceIdLoginModal');
-        const video = document.getElementById('faceIdVideo');
-        const canvas = document.getElementById('faceIdCanvas');
-        const statusEl = document.getElementById('faceIdStatusText');
-        const closeBtn = document.getElementById('closeFaceIdModalBtn');
-        const cancelBtn = document.getElementById('cancelFaceIdBtn');
-        const retryBtn = document.getElementById('retryFaceIdBtn');
-        const mismatchCard = document.getElementById('faceIdMismatchCard');
-        const container = document.getElementById('faceIdContainer');
-
-        if (!modal || !video) return;
-        modal.classList.remove('hidden');
-
-        // Reset UI State
-        isScanning = true;
-        if (mismatchCard) mismatchCard.classList.add('hidden');
-        if (retryBtn) retryBtn.classList.add('hidden');
-        if (container) {
-            container.className = 'relative w-64 aspect-square mx-auto rounded-3xl overflow-hidden bg-black border-2 border-emerald-500/50 mb-4 shadow-xl shadow-emerald-500/10 transition-all duration-300';
-        }
-        if (statusEl) {
-            statusEl.className = 'text-xs text-gray-400 mb-4';
-            statusEl.textContent = 'Starting camera for Face ID sign in...';
-        }
-
-        let loopId = null;
-
-        const stop = () => {
-            isScanning = false;
-            if (loopId) cancelAnimationFrame(loopId);
-            if (sdk) sdk.stopCamera();
-            modal.classList.add('hidden');
-        };
-
-        if (closeBtn) closeBtn.onclick = stop;
-        if (cancelBtn) cancelBtn.onclick = stop;
-        if (retryBtn) retryBtn.onclick = () => startFaceIdLogin();
-
-        try {
-            if (!sdk) sdk = new window.FacialRecognitionSDK({ distanceThreshold: 0.52 });
-            await sdk.init();
-
-            // Load enrolled faces from local FaceDB & Supabase Cloud
-            if (window.faceDB) {
-                await window.faceDB.init();
-                const people = await window.faceDB.getAllPeople();
-                sdk.clearAllEnrolled();
-                people.forEach(p => sdk.enrollPerson(p.name, p.descriptors, { role: p.role, photo: p.photo }));
-            }
-
-            if (window.supabaseSync && window.supabaseSync.isReady) {
-                try {
-                    const cloudPeople = await window.supabaseSync.fetchPeopleFromCloud();
-                    cloudPeople.forEach(cp => {
-                        if (!sdk.enrolledPeople.has(cp.name)) {
-                            sdk.enrollPerson(cp.name, cp.descriptors, { role: cp.role, photo: cp.photo });
-                        }
-                    });
-                } catch(e) {}
-            }
-
-            await sdk.startCamera(video);
-            if (statusEl) statusEl.textContent = 'Looking for enrolled face... Position face in frame.';
-
-            let consecutiveUnrecognizedFrames = 0;
-
-            async function scanLoop() {
-                if (!isScanning) return;
-
-                if (video.readyState >= 2 && video.videoWidth > 0) {
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-
-                    try {
-                        const results = await sdk.recognize(video);
-                        sdk.drawHUD(canvas, results);
-
-                        const match = results.find(r => r.isRecognized);
-                        if (match) {
-                            consecutiveUnrecognizedFrames = 0;
-                            if (container) {
-                                container.className = 'relative w-64 aspect-square mx-auto rounded-3xl overflow-hidden bg-black border-2 border-emerald-400 shadow-xl shadow-emerald-500/30 mb-4 transition-all duration-300';
-                            }
-                            if (statusEl) {
-                                statusEl.className = 'text-xs font-bold text-emerald-400 mb-4 animate-pulse';
-                                statusEl.textContent = `Welcome back, ${match.name}! Signing in...`;
-                            }
-                            if (window.soundEffects) window.soundEffects.playSuccess();
-
-                            setTimeout(() => {
-                                stop();
-                                const stored = JSON.parse(localStorage.getItem(PROFILE_KEY) || '{}');
-                                const profile = {
-                                    ...stored,
-                                    name: match.name,
-                                    photo: match.photo || stored.photo || ''
-                                };
-                                saveUserSession(profile, true);
-                                showCloudToast(`Welcome back, ${match.name}! Signed in with Face ID.`, 'success');
-                                setTimeout(() => {
-                                    window.location.href = 'index.html';
-                                }, 350);
-                            }, 500);
-                            return;
-                        } else if (results.length > 0) {
-                            // A face was detected in camera, but is NOT recognized
-                            consecutiveUnrecognizedFrames++;
-                            if (container) {
-                                container.className = 'relative w-64 aspect-square mx-auto rounded-3xl overflow-hidden bg-black border-2 border-red-500 shadow-xl shadow-red-500/30 mb-4 transition-all duration-300';
-                            }
-                            if (statusEl) {
-                                statusEl.className = 'text-xs font-semibold text-red-400 mb-4';
-                                statusEl.textContent = `Face detected but not recognized in TruePass database.`;
-                            }
-
-                            if (consecutiveUnrecognizedFrames >= 4) {
-                                isScanning = false;
-                                if (sdk) sdk.stopCamera();
-                                if (mismatchCard) mismatchCard.classList.remove('hidden');
-                                if (retryBtn) retryBtn.classList.remove('hidden');
-                                if (statusEl) {
-                                    statusEl.className = 'text-xs font-bold text-red-400 mb-4';
-                                    statusEl.textContent = `Identity Mismatch: Face not recognized.`;
-                                }
-                                if (window.soundEffects) window.soundEffects.playAlert();
-                                return;
-                            }
-                        } else {
-                            consecutiveUnrecognizedFrames = Math.max(0, consecutiveUnrecognizedFrames - 1);
-                            if (statusEl) {
-                                statusEl.className = 'text-xs text-gray-400 mb-4';
-                                statusEl.textContent = 'Looking for enrolled face... Position face in frame.';
-                            }
-                        }
-                    } catch (e) {}
-                }
-                loopId = requestAnimationFrame(scanLoop);
-            }
-
-            scanLoop();
-        } catch (e) {
-            if (statusEl) statusEl.textContent = `Camera error: ${e.message}`;
-        }
-    }
-
-    // ========================================================
+    
+        // ========================================================
     // SIGN IN / LOGIN FLOW (LOCAL STORAGE + SUPABASE CLOUD)
     // ========================================================
     async function handleUserLogin(e) {
@@ -906,17 +756,11 @@
         } catch (e) {}
 
         // 2. Query Supabase Cloud public.profiles table
-        if (!matchedProfile && window.supabaseSync && window.supabaseSync.client) {
+        if (!matchedProfile && window.supabaseSync) {
             try {
                 const clean = identifier.replace(/['"]/g, '').trim();
-                const { data, error } = await window.supabaseSync.client
-                    .from('profiles')
-                    .select('*')
-                    .or(`name.ilike.%${clean}%,email.ilike.%${clean}%`)
-                    .limit(1);
-
-                if (data && data.length > 0) {
-                    const p = data[0];
+                const p = await window.supabaseSync.findProfileInCloud(clean);
+                if (p) {
                     matchedProfile = {
                         memberId: 'TP-' + (p.loyalty_tier || 'Standard').substring(0, 3).toUpperCase() + '-' + Math.floor(100000 + Math.random() * 900000),
                         name: p.name,
@@ -1128,10 +972,7 @@
             submitLoginBtn.addEventListener('click', (e) => handleUserLogin(e));
         }
 
-        const faceIdQuickLoginBtn = document.getElementById('faceIdQuickLoginBtn');
-        if (faceIdQuickLoginBtn) {
-            faceIdQuickLoginBtn.addEventListener('click', () => startFaceIdLogin());
-        }
+        
 
         const backToStep1Btn = document.getElementById('backToStep1Btn');
         if (backToStep1Btn) {
@@ -1879,8 +1720,7 @@
     window.showLoginView = showLoginView;
     window.showPassView = showPassView;
     window.handleUserLogin = handleUserLogin;
-    window.signInWithFace = startFaceIdLogin;
-    window.startFaceCapture = startFaceCapture;
+        window.startFaceCapture = startFaceCapture;
     window.stopFaceCapture = stopFaceCapture;
     window.signOutUser = signOutUser;
     window.applyUserSignedInState = applyUserSignedInState;

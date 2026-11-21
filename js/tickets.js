@@ -219,7 +219,7 @@
         localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
 
         // Auto-sync ticket directly to user's account on Supabase Cloud
-        if (window.supabaseSync && window.supabaseSync.isReady) {
+        if (window.supabaseSync) {
             window.supabaseSync.saveTicketToCloud(booking)
                 .then(res => {
                     const latency = res ? res.latencyMs : 0;
@@ -233,7 +233,7 @@
 
     // Fetch and sync user-specific tickets from Supabase Cloud
     async function syncCloudBookingsForUser(profile) {
-        if (!profile || !profile.name || !window.supabaseSync || !window.supabaseSync.isReady) return;
+        if (!profile || !profile.name || !window.supabaseSync) return;
         try {
             const cloudRows = await window.supabaseSync.fetchTicketsByPerson(profile.name);
             if (cloudRows && cloudRows.length > 0) {
@@ -644,13 +644,11 @@
                     window.showConfirm({
                         title: 'Sign In Required',
                         message: 'To protect tickets with facial biometrics and bind passes directly to your verified account on the cloud, please sign in or register first.',
-                        confirmText: 'Face ID Sign In',
-                        cancelText: 'Pre-Register / Sign Up'
-                    }).then(useFaceId => {
-                        if (useFaceId) {
-                            window.truePass.openFaceLoginModal();
-                        } else {
-                            window.location.href = 'onboarding.html';
+                        confirmText: 'Sign In / Register',
+                        cancelText: 'Cancel'
+                    }).then(confirmed => {
+                        if (confirmed) {
+                            window.location.href = 'onboarding.html?mode=login';
                         }
                     });
                 } else {
@@ -757,9 +755,7 @@
             startTurnstileGate();
         },
 
-        openFaceLoginModal: function () {
-            startFaceIdLogin();
-        },
+        
 
         // Clean In-Website Refund Method
         refundTicket: async function (bookingId) {
@@ -889,164 +885,8 @@
         }
     }
 
-    // ========================================================
-    // FACE ID INSTANT SIGN IN
-    // ========================================================
-    let faceIdSdk = null;
-    let isFaceIdScanning = false;
-    let faceIdLoopId = null;
-
-    async function startFaceIdLogin() {
-        const modal = document.getElementById('faceIdLoginModal');
-        const video = document.getElementById('faceIdVideo');
-        const canvas = document.getElementById('faceIdCanvas');
-        const statusEl = document.getElementById('faceIdStatusText');
-        const closeBtn = document.getElementById('closeFaceIdModalBtn');
-        const cancelBtn = document.getElementById('cancelFaceIdBtn');
-        const retryBtn = document.getElementById('retryFaceIdBtn');
-        const mismatchCard = document.getElementById('faceIdMismatchCard');
-        const container = document.getElementById('faceIdContainer');
-
-        if (!modal || !video || !canvas) return;
-        modal.classList.remove('hidden');
-
-        // Reset UI State
-        isFaceIdScanning = true;
-        if (mismatchCard) mismatchCard.classList.add('hidden');
-        if (retryBtn) retryBtn.classList.add('hidden');
-        if (container) {
-            container.className = 'relative w-64 aspect-square mx-auto rounded-3xl overflow-hidden bg-black border-2 border-emerald-500/50 mb-4 shadow-xl shadow-emerald-500/10 transition-all duration-300';
-        }
-        if (statusEl) {
-            statusEl.className = 'text-xs text-gray-400 mb-4';
-            statusEl.textContent = 'Starting camera for Instant Face ID sign in...';
-        }
-
-        const stop = () => {
-            isFaceIdScanning = false;
-            if (faceIdLoopId) cancelAnimationFrame(faceIdLoopId);
-            if (faceIdSdk) faceIdSdk.stopCamera();
-            modal.classList.add('hidden');
-        };
-
-        if (closeBtn) closeBtn.onclick = stop;
-        if (cancelBtn) cancelBtn.onclick = stop;
-        if (retryBtn) retryBtn.onclick = () => startFaceIdLogin();
-        const openFaceIdCamBtn = document.getElementById('openFaceIdCamBtn');
-        if (openFaceIdCamBtn) openFaceIdCamBtn.onclick = () => startFaceIdLogin();
-
-        try {
-            if (!faceIdSdk) faceIdSdk = new window.FacialRecognitionSDK({ distanceThreshold: 0.52 });
-            await faceIdSdk.init();
-
-            // Load enrolled faces from local FaceDB & Supabase Cloud
-            if (window.faceDB) {
-                await window.faceDB.init();
-                const people = await window.faceDB.getAllPeople();
-                faceIdSdk.clearAllEnrolled();
-                people.forEach(p => faceIdSdk.enrollPerson(p.name, p.descriptors, { role: p.role, photo: p.photo }));
-            }
-
-            if (window.supabaseSync && window.supabaseSync.isReady) {
-                try {
-                    const cloudPeople = await window.supabaseSync.fetchPeopleFromCloud();
-                    cloudPeople.forEach(cp => {
-                        if (!faceIdSdk.enrolledPeople.has(cp.name)) {
-                            faceIdSdk.enrollPerson(cp.name, cp.descriptors, { role: cp.role, photo: cp.photo });
-                        }
-                    });
-                } catch(e) {}
-            }
-
-            await faceIdSdk.startCamera(video);
-            if (statusEl) statusEl.textContent = 'Looking for enrolled face... Position face in frame.';
-
-            let consecutiveUnrecognizedFrames = 0;
-
-            async function scanLoop() {
-                if (!isFaceIdScanning) return;
-
-                if (video.readyState >= 2 && video.videoWidth > 0) {
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-
-                    try {
-                        const results = await faceIdSdk.recognize(video);
-                        faceIdSdk.drawHUD(canvas, results);
-
-                        const match = results.find(r => r.isRecognized);
-                        if (match) {
-                            consecutiveUnrecognizedFrames = 0;
-                            if (container) {
-                                container.className = 'relative w-64 aspect-square mx-auto rounded-3xl overflow-hidden bg-black border-2 border-emerald-400 shadow-xl shadow-emerald-500/30 mb-4 transition-all duration-300';
-                            }
-                            if (statusEl) {
-                                statusEl.className = 'text-xs font-bold text-emerald-400 mb-4 animate-pulse';
-                                statusEl.textContent = `Welcome back, ${match.name}! Signing in...`;
-                            }
-                            if (window.soundEffects) window.soundEffects.playSuccess();
-
-                            setTimeout(() => {
-                                stop();
-                                const stored = JSON.parse(localStorage.getItem(PROFILE_KEY) || '{}');
-                                const profile = {
-                                    ...stored,
-                                    name: match.name,
-                                    photo: match.photo || stored.photo || '',
-                                    loyaltyTier: match.role ? match.role.replace(/FastTrack Member \((.*?)\)/, '$1') : 'Standard',
-                                    lastLogin: Date.now()
-                                };
-                                localStorage.setItem(SESSION_KEY, JSON.stringify(profile));
-                                localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
-                                if (window.showToast) {
-                                    window.showToast(`Welcome back, ${match.name}! Refreshing session...`, 'success');
-                                }
-                                setTimeout(() => {
-                                    window.location.reload();
-                                }, 300);
-                            }, 500);
-                            return;
-                        } else if (results.length > 0) {
-                            // A face was detected, but does NOT match any enrolled profile
-                            consecutiveUnrecognizedFrames++;
-                            if (container) {
-                                container.className = 'relative w-64 aspect-square mx-auto rounded-3xl overflow-hidden bg-black border-2 border-red-500 shadow-xl shadow-red-500/30 mb-4 transition-all duration-300';
-                            }
-                            if (statusEl) {
-                                statusEl.className = 'text-xs font-semibold text-red-400 mb-4';
-                                statusEl.textContent = `Face detected but not recognized in TruePass database.`;
-                            }
-
-                            if (consecutiveUnrecognizedFrames >= 4) {
-                                isFaceIdScanning = false;
-                                if (faceIdSdk) faceIdSdk.stopCamera();
-                                if (mismatchCard) mismatchCard.classList.remove('hidden');
-                                if (retryBtn) retryBtn.classList.remove('hidden');
-                                if (statusEl) {
-                                    statusEl.className = 'text-xs font-bold text-red-400 mb-4';
-                                    statusEl.textContent = `Identity Mismatch: Face not recognized.`;
-                                }
-                                if (window.soundEffects) window.soundEffects.playAlert();
-                                return;
-                            }
-                        } else {
-                            consecutiveUnrecognizedFrames = Math.max(0, consecutiveUnrecognizedFrames - 1);
-                            if (statusEl) {
-                                statusEl.className = 'text-xs text-gray-400 mb-4';
-                                statusEl.textContent = 'Looking for enrolled face... Position face in frame.';
-                            }
-                        }
-                    } catch (e) {}
-                }
-                faceIdLoopId = requestAnimationFrame(scanLoop);
-            }
-
-            scanLoop();
-        } catch (e) {
-            if (statusEl) statusEl.textContent = `Camera error: ${e.message}`;
-        }
-    }
-
+    
+        
     function switchStep(stepNumber) {
         currentStep = stepNumber;
         document.querySelectorAll('.step-panel').forEach(p => p.classList.add('hidden'));
@@ -1805,8 +1645,8 @@
                     </div>
                     <p class="text-sm font-semibold text-gray-300">Sign In Required</p>
                     <p class="text-xs text-gray-500 mt-1 mb-4">Please sign in to view your biometric tickets and wallet passes.</p>
-                    <button onclick="window.truePass.openFaceLoginModal(); document.getElementById('bookingsModal').classList.add('hidden');" class="px-4 py-2 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 text-white text-xs font-bold shadow-md shadow-red-600/30">
-                        Face ID Sign In
+                    <button onclick="window.location.href='onboarding.html?mode=login'; document.getElementById('bookingsModal').classList.add('hidden');" class="px-4 py-2 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 text-white text-xs font-bold shadow-md shadow-red-600/30">
+                        Sign In to Account
                     </button>
                 </div>
             `;
