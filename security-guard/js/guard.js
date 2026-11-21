@@ -368,8 +368,6 @@
     let availableVideoDevices = [];
     let currentDeviceIndex = 0;
     let currentVideoStream = null;
-    let isCameraRunning = false;
-    let cameraLoopId = null;
 
     // Immediate global controller hooks
     window.guardStartCamera = (constraints) => {
