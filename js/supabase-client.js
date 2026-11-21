@@ -1,4 +1,4 @@
-/**
+﻿/**
  * SupabaseCloudSync (v3.0)
  * Connects the Facial Recognition App & TruePass Ticketing directly to Supabase Cloud Database & Storage.
  * Supports Onboarding Profiles, 128-d Biometric Embeddings, Ticket Sync, and Ticket Refunds.
@@ -22,6 +22,10 @@ class SupabaseCloudSync {
     /**
      * Initialize or update Supabase Client
      */
+    init(url, key) {
+        return this.initClient(url, key);
+    }
+
     initClient(url, key) {
         if (!url || !key) {
             this.client = null;
@@ -143,29 +147,26 @@ class SupabaseCloudSync {
     }
 
     /**
-     * Privacy-preserving person commitment registration.
-     * ZERO-LEAKAGE ENFORCEMENT: Never uploads raw photos or raw descriptors to disk/cloud database.
+     * Save an enrolled person / face vector to Supabase
      */
-    async savePersonToCloud({ name, role = '', descriptors = [], photo = '', notes = '', biometricCommitment = '' }) {
+    async savePersonToCloud({ name, role = '', descriptors = [], photo = '', notes = '' }) {
         if (!this.client) return null;
 
-        // Requirement 1: Discard raw photo and raw descriptor vectors immediately
+        let cloudPhotoUrl = photo;
+        if (photo && photo.startsWith('data:image')) {
+            cloudPhotoUrl = await this.uploadPhoto(photo, name);
+        }
+
+        const serializedDescriptors = descriptors.map(d => Array.from(d));
+
         const record = {
             name: name.trim(),
             role: role.trim(),
             notes: notes.trim(),
-            photo_url: '', // Explicitly blank: Never persist raw photos to database
-            descriptors: [], // Explicitly blank: Never persist raw template arrays
-            biometric_commitment: biometricCommitment || '',
+            photo_url: cloudPhotoUrl,
+            descriptors: serializedDescriptors,
             updated_at: new Date().toISOString()
         };
-
-        // Wipe any ephemeral input arrays in-place
-        if (Array.isArray(descriptors)) {
-            for (const d of descriptors) {
-                if (d && typeof d.fill === 'function') d.fill(0);
-            }
-        }
 
         const { data, error } = await this.client
             .from('faces')
@@ -173,11 +174,12 @@ class SupabaseCloudSync {
             .select();
 
         if (error) {
-            console.warn('[Supabase DB] Note saving person commitment:', error.message);
+            console.error('[Supabase DB] Error saving person:', error);
+            throw error;
         }
 
-        console.log(`[Supabase Privacy] Person commitment registered for: ${name} (zero raw biometrics stored)`);
-        return { ...record, photo: '' };
+        console.log(`[Supabase] Cloud face record saved for: ${name}`);
+        return { ...record, photo: cloudPhotoUrl };
     }
 
     /**
@@ -207,15 +209,20 @@ class SupabaseCloudSync {
     }
 
     /**
-     * Save an Onboarding / Pre-registration Profile with zero biometric leakage.
-     * Raw photos and templates are discarded immediately and never saved to cloud storage or DB.
+     * Save an Onboarding / Pre-registration Profile with ALL input fields to Supabase Cloud
      */
-    async saveProfileToCloud({ name, email = '', phone = '', dob = '', idType = 'Passport', idNumber = '', loyaltyTier = 'Standard', descriptors = [], photo = '', notes = '', biometricCommitment = '' }) {
+    async saveProfileToCloud({ name, email = '', phone = '', dob = '', idType = 'Passport', idNumber = '', loyaltyTier = 'Standard', descriptors = [], photo = '', notes = '' }) {
         if (!this.client) return null;
 
         const t0 = performance.now();
+        let cloudPhotoUrl = photo;
+        if (photo && photo.startsWith('data:image')) {
+            cloudPhotoUrl = await this.uploadPhoto(photo, `profile_${name}`);
+        }
 
-        // 1. Save onboarding profile with privacy commitments (zero raw biometrics)
+        const serializedDescriptors = descriptors.map(d => Array.from(d));
+
+        // 1. Save all onboarding intake fields into public.profiles
         const profileRecord = {
             name: name.trim(),
             email: email.trim(),
@@ -224,10 +231,9 @@ class SupabaseCloudSync {
             id_type: idType,
             id_number: idNumber.trim(),
             loyalty_tier: loyaltyTier,
-            photo_url: '', // Explicitly blank: Never persist raw photos
+            photo_url: cloudPhotoUrl,
             notes: notes.trim(),
-            descriptors: [], // Explicitly blank: Never persist raw templates
-            biometric_commitment: biometricCommitment || '',
+            descriptors: serializedDescriptors,
             updated_at: new Date().toISOString()
         };
 
@@ -241,52 +247,47 @@ class SupabaseCloudSync {
                 console.warn('[Supabase Profiles] Upsert note:', profileErr.message);
             } else {
                 profileSaved = true;
-                console.log(`[Supabase Privacy] Profile commitment saved for: ${name}`);
+                console.log(`[Supabase Profiles] Onboarding profile saved for: ${name}`);
             }
         } catch (e) {
             console.warn('[Supabase Profiles] Error:', e.message);
         }
 
-        // 2. Register commitment in faces table (zero raw templates)
+        // 2. Also register face biometric vector in public.faces for 1-second turnstile matching
         let faceSaved = false;
         try {
             await this.savePersonToCloud({
                 name: name.trim(),
                 role: `FastTrack Member (${loyaltyTier})`,
-                photo: '',
+                photo: cloudPhotoUrl,
                 descriptors: descriptors,
-                notes: `Email: ${email} | ID: ${idType} ${idNumber} | DOB: ${dob}`,
-                biometricCommitment: biometricCommitment
+                notes: `Email: ${email} | ID: ${idType} ${idNumber} | DOB: ${dob}`
             });
             faceSaved = true;
         } catch (err) {
             console.warn('[Supabase Faces] Sync warning:', err.message);
         }
 
-        // Enforce in-place memory wipe of ephemeral descriptors
-        if (Array.isArray(descriptors)) {
-            for (const d of descriptors) {
-                if (d && typeof d.fill === 'function') d.fill(0);
-            }
-        }
-
         const latencyMs = Math.round(performance.now() - t0);
         return {
             success: profileSaved || faceSaved,
             profile: profileRecord,
-            photoUrl: '',
+            photoUrl: cloudPhotoUrl,
             latencyMs
         };
     }
 
     /**
      * Save a Purchased Event Ticket to Supabase Cloud (public.tickets)
-     * Privacy-preserving: Stores cryptographic biometric commitment, never raw images.
      */
     async saveTicketToCloud(ticket) {
         if (!this.client) return null;
 
         const t0 = performance.now();
+        let cloudPhotoUrl = ticket.photoDataUrl || ticket.photo || '';
+        if (cloudPhotoUrl && cloudPhotoUrl.startsWith('data:image')) {
+            cloudPhotoUrl = await this.uploadPhoto(cloudPhotoUrl, `ticket_${ticket.bookingId || ticket.buyerName}`);
+        }
 
         const ticketRecord = {
             booking_id: ticket.bookingId,
@@ -304,8 +305,7 @@ class SupabaseCloudSync {
             id_type: ticket.idType || '',
             id_number: ticket.idNumber || '',
             loyalty_tier: ticket.loyaltyTier || 'Standard',
-            photo_url: '', // Explicitly blank: Never persist raw photos to database
-            biometric_commitment: ticket.biometricCommitment || '',
+            photo_url: cloudPhotoUrl,
             face_verified: !!ticket.faceVerified,
             status: ticket.status || 'CONFIRMED',
             created_at: ticket.createdAt || new Date().toISOString()

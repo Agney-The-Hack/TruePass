@@ -145,7 +145,11 @@
     // ----------------------------------------------------
     function initSupabaseGuard() {
         if (window.supabaseSync) {
-            window.supabaseSync.init(SUPABASE_PROJECT_URL, SUPABASE_ANON_KEY);
+            if (typeof window.supabaseSync.initClient === 'function') {
+                window.supabaseSync.initClient(SUPABASE_PROJECT_URL, SUPABASE_ANON_KEY);
+            } else if (typeof window.supabaseSync.init === 'function') {
+                window.supabaseSync.init(SUPABASE_PROJECT_URL, SUPABASE_ANON_KEY);
+            }
             updateSupabasePill(true, 'Live');
         } else {
             updateSupabasePill(false, 'Offline');
@@ -212,14 +216,14 @@
                         buyerPhone: r.buyer_phone,
                         eventTitle: r.event_title,
                         venue: r.venue,
-                        date: r.date,
-                        time: r.time,
+                        date: r.event_date || r.date,
+                        time: r.showtime || r.time,
                         format: r.format || 'Standard',
                         seats: Array.isArray(r.seats) ? r.seats : (typeof r.seats === 'string' ? JSON.parse(r.seats || '[]') : []),
                         totalAmount: r.total_amount,
                         status: r.status || 'CONFIRMED',
                         faceVerified: r.face_verified,
-                        photoDataUrl: r.photo_data_url || '',
+                        photoDataUrl: r.photo_url || r.photo_data_url || '',
                         createdAt: r.created_at,
                         isCloudSynced: true
                     }));
@@ -556,7 +560,7 @@
                 (async () => {
                     try {
                         if (!guardSdk) {
-                            guardSdk = new window.FacialRecognitionSDK({ distanceThreshold: 0.52 });
+                            guardSdk = new window.FacialRecognitionSDK({ distanceThreshold: 0.58, minConfidence: 0.35 });
                         }
                         if (!guardSdk.isInitialized) {
                             await guardSdk.init();
@@ -566,9 +570,15 @@
                         guardSdk.videoStream = stream;
                         guardSdk.videoElement = video;
 
+                        // Ensure cloud data is loaded if not already
+                        if (allProfiles.length === 0 && allFaces.length === 0) {
+                            await refreshAllCloudData();
+                        }
+
                         await enrollAllFacesIntoSdk();
 
-                        if (toast) toast.textContent = 'Gate Scanner Ready • Facial Recognition Online ✓';
+                        const totalEnrolled = guardSdk.enrolledPeople ? guardSdk.enrolledPeople.size : 0;
+                        if (toast) toast.textContent = `Gate Scanner Ready • Facial Recognition Online (${totalEnrolled} face(s) enrolled) ✓`;
                         startScanLoop();
                     } catch (sdkErr) {
                         console.error('[Guard AI Error]', sdkErr);
@@ -652,34 +662,44 @@
                 await window.faceDB.init();
                 const people = await window.faceDB.getAllPeople();
                 people.forEach(p => {
-                    if (p.name && p.descriptors && p.descriptors.length > 0) {
+                    if (p.name && p.descriptors) {
                         guardSdk.enrollPerson(p.name, p.descriptors, { role: p.role, photo: p.photo });
                     }
                 });
-            } catch (e) {}
+            } catch (e) {
+                console.warn('[Guard] Local FaceDB enroll notice:', e);
+            }
         }
 
-        // 2. From Supabase Cloud profiles table
+        // 2. From Supabase Cloud faces table
+        allFaces.forEach(f => {
+            if (f.name && f.descriptors) {
+                guardSdk.enrollPerson(f.name, f.descriptors, {
+                    role: f.role || 'Attendee',
+                    photo: f.photo_url || ''
+                });
+            }
+        });
+
+        // 3. From Supabase Cloud profiles table
         allProfiles.forEach(p => {
             if (p.name && p.descriptors && p.descriptors.length > 0) {
                 guardSdk.enrollPerson(p.name, p.descriptors, {
                     role: `${p.loyalty_tier || 'Standard'} Member`,
                     photo: p.photo_url || ''
                 });
+            } else if (p.name && p.photo_url && guardSdk.enrolledPeople.has(p.name)) {
+                // Attach photo metadata if missing
+                const enrolled = guardSdk.enrolledPeople.get(p.name);
+                if (!enrolled.photo) enrolled.photo = p.photo_url;
             }
         });
 
-        // 3. From Supabase Cloud faces table
-        allFaces.forEach(f => {
-            if (f.name && f.descriptors && f.descriptors.length > 0) {
-                if (!guardSdk.enrolledPeople.has(f.name)) {
-                    guardSdk.enrollPerson(f.name, f.descriptors, {
-                        role: f.role || 'Member',
-                        photo: f.photo_url || ''
-                    });
-                }
-            }
-        });
+        const totalEnrolled = guardSdk.enrolledPeople.size;
+        console.log(`[Guard SDK] FaceMatcher ready with ${totalEnrolled} attendee(s):`, Array.from(guardSdk.enrolledPeople.keys()));
+
+        const metricFaces = document.getElementById('metricEnrolledFaces');
+        if (metricFaces) metricFaces.textContent = totalEnrolled;
     }
 
     // ----------------------------------------------------
@@ -715,20 +735,14 @@
                             const personName = recognizedMatch.name;
                             const similarity = recognizedMatch.confidence || 95;
 
-                            if (personName === lastInspectedName) {
-                                consecutiveMatchCount++;
-                            } else {
-                                lastInspectedName = personName;
-                                consecutiveMatchCount = 1;
-                            }
+                            lastInspectedName = personName;
+                            consecutiveMatchCount++;
 
                             // Capture live video frame snapshot
                             captureLiveInspectSnapshot(video, recognizedMatch.box);
 
-                            // Inspect attendee ticket and evaluate admission verdict
-                            if (consecutiveMatchCount >= 2) {
-                                evaluateGateAdmission(personName, similarity, recognizedMatch);
-                            }
+                            // Inspect attendee ticket and evaluate admission verdict immediately
+                            evaluateGateAdmission(personName, similarity, recognizedMatch);
 
                             if (toast) {
                                 toast.textContent = `Recognized: ${personName} (${similarity}% match) — Analyzing ticket...`;
@@ -883,7 +897,11 @@
         }
 
         // Look up all tickets bound to this attendee
-        const attendeeTickets = allTickets.filter(t => (t.buyerName || '').toLowerCase() === attendeeName.toLowerCase());
+        const cleanAttendee = attendeeName.trim().toLowerCase();
+        const attendeeTickets = allTickets.filter(t => {
+            const name = (t.buyerName || t.name || '').trim().toLowerCase();
+            return name === cleanAttendee || name.includes(cleanAttendee) || cleanAttendee.includes(name);
+        });
 
         const ongoingEvent = selectedEventFilter;
         let targetTicket = null;
@@ -892,7 +910,12 @@
 
         if (ongoingEvent !== 'all') {
             // Find ticket specifically for the chosen ongoing event
-            const eventTicket = attendeeTickets.find(t => t.eventTitle === ongoingEvent);
+            const eventTicket = attendeeTickets.find(t => {
+                if (!t.eventTitle) return false;
+                const tTitle = t.eventTitle.trim().toLowerCase();
+                const oEvent = ongoingEvent.trim().toLowerCase();
+                return tTitle === oEvent || tTitle.includes(oEvent) || oEvent.includes(tTitle);
+            });
             if (eventTicket) {
                 targetTicket = eventTicket;
                 if (eventTicket.status === 'REFUNDED') {

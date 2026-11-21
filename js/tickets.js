@@ -1952,14 +1952,27 @@
         if (statusText) statusText.textContent = 'Look directly at the overhead camera at Gate 4 to unlock turnstile...';
 
         try {
-            if (!turnstileSdk) turnstileSdk = new window.FacialRecognitionSDK({ distanceThreshold: 0.54 });
+            if (!turnstileSdk) turnstileSdk = new window.FacialRecognitionSDK({ distanceThreshold: 0.58, minConfidence: 0.35 });
             await turnstileSdk.init();
 
             if (window.faceDB) {
-                await window.faceDB.init();
-                const people = await window.faceDB.getAllPeople();
-                turnstileSdk.clearAllEnrolled();
-                people.forEach(p => turnstileSdk.enrollPerson(p.name, p.descriptors, { role: p.role, photo: p.photo }));
+                try {
+                    await window.faceDB.init();
+                    const people = await window.faceDB.getAllPeople();
+                    turnstileSdk.clearAllEnrolled();
+                    people.forEach(p => turnstileSdk.enrollPerson(p.name, p.descriptors, { role: p.role, photo: p.photo }));
+                } catch(e) {}
+            }
+
+            if (window.supabaseSync && window.supabaseSync.isReady) {
+                try {
+                    const cloudPeople = await window.supabaseSync.fetchPeopleFromCloud();
+                    cloudPeople.forEach(cp => {
+                        if (!turnstileSdk.enrolledPeople.has(cp.name)) {
+                            turnstileSdk.enrollPerson(cp.name, cp.descriptors, { role: cp.role, photo: cp.photo });
+                        }
+                    });
+                } catch(e) {}
             }
 
             await turnstileSdk.startCamera(video);

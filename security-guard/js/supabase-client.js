@@ -22,6 +22,10 @@ class SupabaseCloudSync {
     /**
      * Initialize or update Supabase Client
      */
+    init(url, key) {
+        return this.initClient(url, key);
+    }
+
     initClient(url, key) {
         if (!url || !key) {
             this.client = null;

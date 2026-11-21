@@ -23,9 +23,9 @@
         constructor(config = {}) {
             this.config = Object.assign({
                 modelUrl: null, // Custom model directory or null for CDN
-                distanceThreshold: 0.55, // 0.40 (strict) to 0.65 (lenient)
+                distanceThreshold: 0.58, // Standard face-api distance (0.58 provides robust matching for webcams)
                 detector: 'tiny', // 'tiny' (faster, mobile friendly) or 'ssd' (higher accuracy)
-                minConfidence: 0.5,
+                minConfidence: 0.35, // Responsive detection even under standard room lighting
                 enableLandmarks: true,
                 autoDraw: false
             }, config);
@@ -147,10 +147,46 @@
         enrollPerson(name, descriptors, metadata = {}) {
             if (!name || !name.trim()) throw new Error('Person name is required.');
             const key = name.trim();
-            const descList = Array.isArray(descriptors) ? descriptors : [descriptors];
-            
-            // Convert to Float32Array
-            const normalized = descList.map(d => (d instanceof Float32Array ? d : new Float32Array(d)));
+            if (!descriptors) return false;
+
+            // Normalize descriptors from any database format into Float32Array[]
+            const normalized = [];
+
+            function extractVectors(item) {
+                if (!item) return;
+                if (typeof item === 'string') {
+                    try { item = JSON.parse(item); } catch (e) { return; }
+                }
+                if (item instanceof Float32Array) {
+                    if (item.length > 0) normalized.push(item);
+                    return;
+                }
+                if (Array.isArray(item)) {
+                    if (item.length === 0) return;
+                    // Check if item is a 128-element numerical descriptor array
+                    if (typeof item[0] === 'number') {
+                        normalized.push(new Float32Array(item));
+                    } else {
+                        // Array of descriptor arrays [[...], [...]]
+                        item.forEach(sub => extractVectors(sub));
+                    }
+                    return;
+                }
+                // Handle objects with numeric keys { "0": 0.12, ... }
+                if (typeof item === 'object') {
+                    const vals = Object.values(item);
+                    if (vals.length > 0 && typeof vals[0] === 'number') {
+                        normalized.push(new Float32Array(vals));
+                    }
+                }
+            }
+
+            extractVectors(descriptors);
+
+            if (normalized.length === 0) {
+                console.warn(`[FaceSDK] No valid descriptor vectors found for "${key}".`);
+                return false;
+            }
 
             if (this.enrolledPeople.has(key)) {
                 const existing = this.enrolledPeople.get(key);
@@ -167,6 +203,7 @@
             }
 
             this.rebuildMatcher();
+            console.log(`[FaceSDK] Enrolled "${key}" (${normalized.length} sample vector(s), total: ${this.enrolledPeople.get(key).descriptors.length})`);
             this.emit('enrolled', { name: key, totalSamples: this.enrolledPeople.get(key).descriptors.length });
             return true;
         }
@@ -226,7 +263,7 @@
         async startCamera(videoElement, constraints = { width: 640, height: 480, facingMode: 'user' }) {
             this.videoElement = videoElement;
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                throw new Error('Webcam API is not supported in this browser. Please use HTTPS or localhost (e.g. http://localhost:8080).');
+                throw new Error('Webcam API is not supported in this browser. Please use HTTPS or localhost (e.g. http://localhost:8088).');
             }
 
             if (this.videoStream) {
