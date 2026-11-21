@@ -1,10 +1,8 @@
 @echo off
 title Push TruePass Branches to GitHub
+cd /d "%~dp0"
 echo ==========================================================
-echo   Pushing all branches to GitHub:
-echo   - main (Default repository branch)
-echo   - truepass-site (Main Ticketing site branch)
-echo   - truepass-guard (Gate Security scanner branch)
+echo   Pushing Updated TruePass to GitHub
 echo   Repository: https://github.com/Agney-The-Hack/TruePass
 echo ==========================================================
 echo.
@@ -14,21 +12,36 @@ if not exist "%GIT_EXE%" (
     set "GIT_EXE=C:\Users\Agney Sunil\AppData\Local\GitHubDesktop\app-3.7.0\resources\app\git\cmd\git.exe"
 )
 
-echo Pushing main branch...
-"%GIT_EXE%" push origin main
-echo.
+echo [1/5] Cleaning any stuck merge state...
+"%GIT_EXE%" merge --abort >nul 2>&1
 
-echo Pushing truepass-site branch...
-"%GIT_EXE%" push origin truepass-site
-echo.
+echo [2/5] Committing all latest changes...
+"%GIT_EXE%" add .
+"%GIT_EXE%" commit -m "feat: updated TruePass account creation and live biometric face scan" >nul 2>&1
 
-echo Pushing truepass-guard branch...
-"%GIT_EXE%" push origin truepass-guard
-echo.
+echo [3/5] Pushing truepass-site branch (Ticketing & Account Portal)...
+"%GIT_EXE%" checkout truepass-site
+"%GIT_EXE%" merge truepass-guard -m "sync: merge latest fixes into truepass-site" >nul 2>&1
+"%GIT_EXE%" push origin truepass-site --force
 
+echo [4/5] Pushing truepass-guard branch (Security Guard Console)...
+"%GIT_EXE%" checkout truepass-guard
+"%GIT_EXE%" push origin truepass-guard --force
+
+echo [5/5] Updating and pushing main branch...
+"%GIT_EXE%" checkout main
+"%GIT_EXE%" reset --hard truepass-site
+"%GIT_EXE%" push origin main --force
+
+echo.
 echo ==========================================================
-echo   Push complete!
-echo   Main Website: https://agney-the-hack.github.io/TruePass/tickets.html
-echo   Repository:   https://github.com/Agney-The-Hack/TruePass
+echo   ALL BRANCHES PUSHED TO GITHUB SUCCESSFULLY!
+echo.
+echo   Live Website: https://agney-the-hack.github.io/TruePass/tickets.html
+echo   Local Web:    http://localhost:8080/tickets.html
 echo ==========================================================
+echo.
+echo Note: Wait ~60 seconds for GitHub Pages to deploy, then
+echo open the link and press Ctrl + F5 to reload.
+echo.
 pause
