@@ -1,6 +1,19 @@
-# TruePass Guard — Turnstile & Gate Security Console
+# TruePass — Decentralized Biometric Ticketing & Gate Security
 
-A high-performance security operator console for live biometric facial recognition, ongoing event admission control, and turnstile gate entry validation.
+A high-performance platform for privacy-first biometric facial recognition, decentralized event ticketing on Quai blockchain, and turnstile gate entry validation.
+
+---
+
+## Live Links & Quick Access
+
+| Portal | Description | Link |
+| :--- | :--- | :--- |
+| **Ticketing Portal** | Browse events, create biometric account, purchase tickets | [tickets.html](file:///c:/github/TruePass/tickets.html) (`http://localhost:8080/tickets.html`) |
+| **Security Guard Console** | Turnstile optical gate scanner & live face-match verification | [guard.html](file:///c:/github/TruePass/guard.html) (`http://localhost:8089/guard.html`) |
+| **Main Platform Hub** | Unified system dashboard and architecture overview | [index.html](file:///c:/github/TruePass/index.html) (`http://localhost:8080/index.html`) |
+| **Identity Onboarding** | Direct attendee biometric intake portal | [onboarding.html](file:///c:/github/TruePass/onboarding.html) (`http://localhost:8080/onboarding.html`) |
+
+> **GitHub Pages Live Deployment**: `https://agney-the-hack.github.io/TruePass/tickets.html` (See below for setup instructions)
 
 ---
 
