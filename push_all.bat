@@ -1,9 +1,10 @@
 @echo off
 title Push TruePass Branches to GitHub
 echo ==========================================================
-echo   Pushing branches to GitHub:
-echo   - truepass-guard
-echo   - truepass-site
+echo   Pushing all branches to GitHub:
+echo   - main (Default repository branch)
+echo   - truepass-site (Main Ticketing site branch)
+echo   - truepass-guard (Gate Security scanner branch)
 echo   Repository: https://github.com/Agney-The-Hack/TruePass
 echo ==========================================================
 echo.
@@ -13,17 +14,21 @@ if not exist "%GIT_EXE%" (
     set "GIT_EXE=C:\Users\Agney Sunil\AppData\Local\GitHubDesktop\app-3.7.0\resources\app\git\cmd\git.exe"
 )
 
-echo Pushing truepass-guard...
-"%GIT_EXE%" push origin truepass-guard
+echo Pushing main branch...
+"%GIT_EXE%" push origin main
 echo.
 
-echo Pushing truepass-site...
+echo Pushing truepass-site branch...
 "%GIT_EXE%" push origin truepass-site
+echo.
+
+echo Pushing truepass-guard branch...
+"%GIT_EXE%" push origin truepass-guard
 echo.
 
 echo ==========================================================
 echo   Push complete!
-echo   Guard Branch: https://github.com/Agney-The-Hack/TruePass/tree/truepass-guard
-echo   Site Branch:  https://github.com/Agney-The-Hack/TruePass/tree/truepass-site
+echo   Main Website: https://agney-the-hack.github.io/TruePass/tickets.html
+echo   Repository:   https://github.com/Agney-The-Hack/TruePass
 echo ==========================================================
 pause
