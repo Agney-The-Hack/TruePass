@@ -1,0 +1,275 @@
+/* ========================================================
+   TruePass Minimalist Glass & Monochrome Stylesheet
+   Pure Black & Grey Aesthetic • No Neon • Glassy Button Shine
+   ======================================================== */
+
+:root {
+    --bg-pure: #0a0a0a;
+    --bg-surface: #121212;
+    --bg-card: #161616;
+    --bg-elevated: #1f1f1f;
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-medium: rgba(255, 255, 255, 0.18);
+    --border-strong: rgba(255, 255, 255, 0.32);
+    --text-pure: #ffffff;
+    --text-primary: #f5f5f5;
+    --text-secondary: #a3a3a3;
+    --text-muted: #666666;
+}
+
+body {
+    background-color: var(--bg-pure) !important;
+    color: var(--text-primary) !important;
+}
+
+button svg,
+a svg {
+    pointer-events: none;
+    shape-rendering: geometricPrecision;
+}
+
+/* Glassy Pressable Buttons with Hover Shine */
+button, 
+.btn-glass,
+.btn-glass-primary,
+.category-pill,
+.resale-cat-pill,
+a.btn-glass,
+a.btn-glass-primary,
+.seat-btn {
+    position: relative !important;
+    overflow: hidden !important;
+    backdrop-filter: blur(14px) !important;
+    -webkit-backdrop-filter: blur(14px) !important;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.btn-glass-primary {
+    background: rgba(255, 255, 255, 0.12) !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.24) !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.18) !important;
+}
+
+.btn-glass-primary:hover {
+    background: rgba(255, 255, 255, 0.22) !important;
+    border-color: rgba(255, 255, 255, 0.5) !important;
+    color: #ffffff !important;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+    transform: translateY(-1px) !important;
+}
+
+.btn-glass {
+    background: rgba(255, 255, 255, 0.05) !important;
+    color: #e5e5e5 !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+}
+
+.btn-glass:hover {
+    background: rgba(255, 255, 255, 0.12) !important;
+    color: #ffffff !important;
+    border-color: rgba(255, 255, 255, 0.28) !important;
+    transform: translateY(-1px) !important;
+}
+
+/* Subtle Shimmer Beam Sweep on Hover */
+button::before,
+.btn-glass::before,
+.btn-glass-primary::before,
+.category-pill::before,
+.resale-cat-pill::before,
+a.btn-glass::before,
+a.btn-glass-primary::before {
+    content: '' !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: -140% !important;
+    width: 70% !important;
+    height: 100% !important;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.28) 50%,
+        transparent 100%
+    ) !important;
+    transform: skewX(-25deg) !important;
+    transition: left 0.65s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    pointer-events: none !important;
+    z-index: 10 !important;
+}
+
+button:hover::before,
+.btn-glass:hover::before,
+.btn-glass-primary:hover::before,
+.category-pill:hover::before,
+.resale-cat-pill:hover::before,
+a.btn-glass:hover::before,
+a.btn-glass-primary:hover::before {
+    left: 140% !important;
+}
+
+button:active,
+.btn-glass:active,
+.btn-glass-primary:active {
+    transform: translateY(0) !important;
+}
+
+/* Neutralize all gradients */
+.bg-gradient-to-r,
+.bg-gradient-to-tr,
+.bg-gradient-to-br,
+.bg-gradient-to-b,
+.bg-gradient-to-l,
+.bg-gradient-to-t {
+    background-image: none !important;
+}
+
+/* Replace loud colors with monochrome / charcoal shades */
+.bg-red-600,
+.bg-rose-600,
+.bg-red-500,
+.bg-rose-500,
+.bg-emerald-600,
+.bg-emerald-500,
+.bg-purple-600,
+.bg-purple-500,
+.bg-indigo-600,
+.bg-indigo-500,
+.bg-teal-600,
+.bg-teal-500,
+.bg-amber-500,
+.bg-amber-600,
+.bg-blue-600,
+.bg-blue-500 {
+    background-color: rgba(255, 255, 255, 0.12) !important;
+    color: #ffffff !important;
+    border-color: var(--border-medium) !important;
+}
+
+.bg-red-400,
+.bg-rose-400,
+.bg-emerald-400,
+.bg-amber-400,
+.bg-purple-400,
+.bg-blue-400 {
+    background-color: #a3a3a3 !important;
+}
+
+.bg-red-950,
+.bg-red-950\/80,
+.bg-red-950\/60,
+.bg-red-950\/40,
+.bg-red-950\/20,
+.bg-rose-950,
+.bg-emerald-950,
+.bg-emerald-950\/80,
+.bg-emerald-950\/60,
+.bg-purple-950,
+.bg-purple-950\/60,
+.bg-indigo-950,
+.bg-amber-950,
+.bg-amber-950\/80,
+.bg-blue-950 {
+    background-color: #161616 !important;
+}
+
+.bg-red-600\/20,
+.bg-red-500\/20,
+.bg-red-500\/10,
+.bg-emerald-600\/20,
+.bg-emerald-500\/20,
+.bg-purple-500\/20,
+.bg-amber-500\/20 {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+.hover\:bg-red-500:hover,
+.hover\:bg-emerald-500:hover,
+.hover\:from-red-500:hover,
+.hover\:bg-gray-800:hover {
+    background-color: rgba(255, 255, 255, 0.18) !important;
+    border-color: var(--border-strong) !important;
+}
+
+/* Neutralize all text colors to white / greys */
+.text-red-500,
+.text-red-400,
+.text-red-300,
+.text-red-200,
+.text-rose-400,
+.text-rose-500,
+.text-rose-300,
+.text-emerald-400,
+.text-emerald-300,
+.text-emerald-200,
+.text-green-400,
+.text-purple-300,
+.text-purple-400,
+.text-indigo-400,
+.text-amber-400,
+.text-amber-300,
+.text-blue-400,
+.text-blue-300,
+.text-teal-400 {
+    color: #f5f5f5 !important;
+}
+
+/* Neutralize borders */
+[class*="border-red-"],
+[class*="border-rose-"],
+[class*="border-emerald-"],
+[class*="border-purple-"],
+[class*="border-amber-"],
+[class*="border-blue-"],
+[class*="border-indigo-"] {
+    border-color: var(--border-subtle) !important;
+}
+
+/* Eliminate harsh neon drop-shadows */
+[class*="shadow-red-"],
+[class*="shadow-emerald-"],
+[class*="shadow-purple-"],
+[class*="shadow-amber-"] {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Stop cartoonish blinking or pulsing animations */
+.animate-ping,
+.animate-pulse {
+    animation: none !important;
+    opacity: 0.8 !important;
+}
+
+/* Refined Glass Surfaces */
+.glass-nav,
+.glass-surface,
+.glass-panel,
+.glass-card {
+    background: rgba(16, 16, 16, 0.82) !important;
+    backdrop-filter: blur(18px) !important;
+    -webkit-backdrop-filter: blur(18px) !important;
+    border-color: var(--border-subtle) !important;
+}
+
+/* Minimalist Seat Buttons */
+.seat-btn.selected {
+    background: rgba(255, 255, 255, 0.25) !important;
+    color: #ffffff !important;
+    border-color: rgba(255, 255, 255, 0.5) !important;
+    box-shadow: 0 0 12px rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Active Category Pills & Active Tab */
+.category-pill.active,
+.resale-cat-pill.active,
+.tab-pill.active {
+    background: rgba(255, 255, 255, 0.16) !important;
+    border-color: rgba(255, 255, 255, 0.35) !important;
+    color: #ffffff !important;
+}
+
+/* Quai glow reset */
+.quai-glow {
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5) !important;
+}
