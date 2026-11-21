@@ -29,22 +29,26 @@
     // ----------------------------------------------------
     // INITIALIZATION ON DOM READY
     // ----------------------------------------------------
-    document.addEventListener('DOMContentLoaded', async () => {
+    function bootstrapGuard() {
         initClock();
         setupNavigationTabs();
         setupAudioToggle();
         setupSearchAndFilters();
         setupGateActions();
 
-        // 1. Initialize Supabase Cloud Connection
-        initSupabaseGuard();
-
-        // 2. Fetch and Load Cloud Data
-        await refreshAllCloudData();
-
-        // 3. Initialize Camera & Biometric Turnstile Engine
+        // 1. Initialize Camera Engine IMMEDIATELY (wire click handlers with zero delay)
         initTurnstileCamera();
-    });
+
+        // 2. Initialize Supabase Cloud Connection & Sync Data in background
+        initSupabaseGuard();
+        refreshAllCloudData().catch(e => console.warn('[Supabase Sync Warn]', e));
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bootstrapGuard);
+    } else {
+        bootstrapGuard();
+    }
 
     // ----------------------------------------------------
     // LIVE CLOCK & DATE
@@ -363,6 +367,31 @@
     let currentCameraFacing = 'user';
     let availableVideoDevices = [];
     let currentDeviceIndex = 0;
+    let currentVideoStream = null;
+    let isCameraRunning = false;
+    let cameraLoopId = null;
+
+    // Immediate global controller hooks
+    window.guardStartCamera = (constraints) => {
+        if (typeof window._guardInternalStartCamera === 'function') {
+            return window._guardInternalStartCamera(constraints);
+        }
+    };
+    window.guardStopCamera = () => {
+        if (typeof window._guardInternalStopCamera === 'function') {
+            return window._guardInternalStopCamera();
+        }
+    };
+    window.guardToggleCamera = () => {
+        if (typeof window._guardInternalToggleCamera === 'function') {
+            return window._guardInternalToggleCamera();
+        }
+    };
+    window.guardSwitchCamera = () => {
+        if (typeof window._guardInternalSwitchCamera === 'function') {
+            return window._guardInternalSwitchCamera();
+        }
+    };
 
     async function initTurnstileCamera() {
         const video = document.getElementById('guardVideo');
@@ -381,13 +410,15 @@
 
         // Wire click handlers for explicit user camera activation
         if (openCameraBtn) {
-            openCameraBtn.addEventListener('click', () => {
+            openCameraBtn.addEventListener('click', (e) => {
+                e.preventDefault();
                 startCamera();
             });
         }
 
         if (toggleCameraHeaderBtn) {
-            toggleCameraHeaderBtn.addEventListener('click', () => {
+            toggleCameraHeaderBtn.addEventListener('click', (e) => {
+                e.preventDefault();
                 if (isCameraRunning) {
                     stopCamera();
                 } else {
@@ -397,7 +428,8 @@
         }
 
         if (switchCameraHeaderBtn) {
-            switchCameraHeaderBtn.addEventListener('click', () => {
+            switchCameraHeaderBtn.addEventListener('click', (e) => {
+                e.preventDefault();
                 switchCamera();
             });
         }
@@ -409,6 +441,7 @@
                     availableVideoDevices = devices.filter(d => d.kind === 'videoinput');
                     if (availableVideoDevices.length > 1 && switchCameraHeaderBtn) {
                         switchCameraHeaderBtn.classList.remove('hidden');
+                        switchCameraHeaderBtn.style.display = 'flex';
                     }
                 }
             } catch (e) {}
@@ -419,63 +452,157 @@
                 currentDeviceIndex = (currentDeviceIndex + 1) % availableVideoDevices.length;
                 const nextDevice = availableVideoDevices[currentDeviceIndex];
                 stopCamera();
-                await startCamera({ deviceId: { exact: nextDevice.deviceId } });
+                await startCamera({ video: { deviceId: { exact: nextDevice.deviceId } }, audio: false });
             } else {
                 currentCameraFacing = (currentCameraFacing === 'user') ? 'environment' : 'user';
                 stopCamera();
-                await startCamera({ facingMode: currentCameraFacing });
+                await startCamera({ video: { facingMode: currentCameraFacing }, audio: false });
             }
         }
 
         async function startCamera(customConstraints) {
+            if (isCameraRunning && currentVideoStream) {
+                console.log('[Guard Cam] Camera is already active.');
+                return;
+            }
+
             try {
-                if (troubleshootNotice) troubleshootNotice.classList.add('hidden');
+                if (troubleshootNotice) {
+                    troubleshootNotice.classList.add('hidden');
+                    troubleshootNotice.style.display = 'none';
+                }
                 if (toast) toast.textContent = 'Requesting camera access...';
-                if (cameraHeaderBtnText) cameraHeaderBtnText.textContent = 'Connecting...';
+                if (cameraHeaderBtnText) cameraHeaderBtnText.textContent = 'Opening...';
 
-                if (!guardSdk) guardSdk = new window.FacialRecognitionSDK({ distanceThreshold: 0.52 });
-                await guardSdk.init();
+                // Verify browser support & secure context
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                    if (!isLocal && !window.isSecureContext) {
+                        throw new Error('Camera requires HTTPS or http://localhost. Please navigate using http://localhost:8089/guard.html.');
+                    }
+                    throw new Error('Camera API (getUserMedia) is not supported in this browser environment.');
+                }
 
-                enrollAllFacesIntoSdk();
+                // 1. HARDWARE CAMERA STREAM: Open immediately with multi-tier fallback
+                let stream = null;
+                const preferredConstraints = customConstraints || {
+                    video: {
+                        width: { ideal: 1280, max: 1920 },
+                        height: { ideal: 720, max: 1080 },
+                        facingMode: currentCameraFacing
+                    },
+                    audio: false
+                };
 
-                const constraints = customConstraints || { facingMode: currentCameraFacing, width: 640, height: 480 };
-                await guardSdk.startCamera(video, constraints);
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia(preferredConstraints);
+                } catch (prefErr) {
+                    console.warn('[Guard Cam] Preferred constraints rejected, trying basic facingMode...', prefErr);
+                    try {
+                        stream = await navigator.mediaDevices.getUserMedia({
+                            video: { facingMode: currentCameraFacing },
+                            audio: false
+                        });
+                    } catch (facingErr) {
+                        console.warn('[Guard Cam] FacingMode rejected, requesting bare { video: true }...', facingErr);
+                        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    }
+                }
+
+                if (!stream) {
+                    throw new Error('No video stream returned from camera device.');
+                }
+
+                // Stop any previous tracks
+                if (currentVideoStream) {
+                    try { currentVideoStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+                }
+                currentVideoStream = stream;
+
+                // Bind stream to video element
+                video.srcObject = stream;
+                video.setAttribute('playsinline', 'true');
+                video.setAttribute('muted', 'true');
+                video.setAttribute('autoplay', 'true');
+                video.muted = true;
+                video.playsInline = true;
+                video.autoplay = true;
+
+                // Play video immediately
+                try {
+                    await video.play();
+                } catch (playErr) {
+                    console.warn('[Guard Cam] Autoplay warning:', playErr);
+                    setTimeout(() => { try { video.play(); } catch(e){} }, 50);
+                }
+
                 isCameraRunning = true;
 
-                // UI adjustments on success
-                if (standbyOverlay) standbyOverlay.classList.add('hidden');
+                // IMMEDIATELY HIDE OVERLAY so user sees their camera viewfinder in <100ms
+                if (standbyOverlay) {
+                    standbyOverlay.classList.add('hidden');
+                    standbyOverlay.style.display = 'none';
+                }
                 if (laser) laser.style.display = 'block';
                 if (cameraHeaderBtnText) cameraHeaderBtnText.textContent = 'Stop Camera';
                 if (toggleCameraHeaderBtn) {
                     toggleCameraHeaderBtn.classList.remove('bg-red-600/20', 'text-red-300', 'border-red-500/40');
-                    toggleCameraHeaderBtn.classList.add('bg-gray-800', 'text-gray-300', 'border-gray-700');
+                    toggleCameraHeaderBtn.classList.add('bg-neutral-800', 'text-white', 'border-white/30');
                 }
 
-                if (toast) toast.textContent = 'Turnstile Camera Active. Awaiting attendees at gate...';
-                startScanLoop();
+                if (toast) toast.textContent = 'Turnstile Camera Active. Initializing AI facial recognition...';
+
                 enumerateCameras();
+
+                // 2. NEURAL NETWORK INITIALIZATION (Runs in background while camera is already showing live video)
+                (async () => {
+                    try {
+                        if (!guardSdk) {
+                            guardSdk = new window.FacialRecognitionSDK({ distanceThreshold: 0.52 });
+                        }
+                        if (!guardSdk.isInitialized) {
+                            await guardSdk.init();
+                        }
+
+                        // Attach live stream to SDK
+                        guardSdk.videoStream = stream;
+                        guardSdk.videoElement = video;
+
+                        await enrollAllFacesIntoSdk();
+
+                        if (toast) toast.textContent = 'Gate Scanner Ready • Facial Recognition Online ✓';
+                        startScanLoop();
+                    } catch (sdkErr) {
+                        console.error('[Guard AI Error]', sdkErr);
+                        if (toast) toast.textContent = 'Camera active • AI model loading from CDN...';
+                    }
+                })();
+
             } catch (err) {
-                console.error('[Guard Cam Error]', err);
+                console.error('[Guard Cam Hardware Error]', err);
                 isCameraRunning = false;
-                if (standbyOverlay) standbyOverlay.classList.remove('hidden');
+                if (standbyOverlay) {
+                    standbyOverlay.classList.remove('hidden');
+                    standbyOverlay.style.display = 'flex';
+                }
                 if (laser) laser.style.display = 'none';
                 if (cameraHeaderBtnText) cameraHeaderBtnText.textContent = 'Open Camera';
                 if (toggleCameraHeaderBtn) {
-                    toggleCameraHeaderBtn.classList.add('bg-red-600/20', 'text-red-300', 'border-red-500/40');
-                    toggleCameraHeaderBtn.classList.remove('bg-gray-800', 'text-gray-300', 'border-gray-700');
+                    toggleCameraHeaderBtn.classList.remove('bg-neutral-800', 'text-white', 'border-white/30');
                 }
 
                 if (troubleshootNotice) {
                     troubleshootNotice.classList.remove('hidden');
+                    troubleshootNotice.style.display = 'block';
                     if (troubleshootText) {
                         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError' || (err.message && err.message.toLowerCase().includes('denied'))) {
-                            troubleshootText.innerHTML = 'Camera access was blocked by the browser. Click the 🔒 or 📷 icon in your URL address bar at the top, select <strong>"Allow"</strong>, and click <strong>Open Camera</strong>.';
+                            troubleshootText.innerHTML = 'Camera access was blocked by the browser. Click the lock or camera permission icon in your browser address bar at the top, select <strong>"Allow"</strong>, and click <strong>Open Camera</strong>.';
                         } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-                            troubleshootText.textContent = 'No camera hardware found. Please connect a USB webcam or enable your device camera.';
-                        } else if (err.name === 'NotReadableError') {
-                            troubleshootText.textContent = 'Camera is in use by another program (Teams, Zoom, browser tab). Please close it and retry.';
+                            troubleshootText.textContent = 'No camera hardware found. Please connect a USB webcam or enable your device camera in Windows Privacy Settings.';
+                        } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+                            troubleshootText.textContent = 'Camera is currently in use by another program (Teams, Zoom, browser tab). Please close other camera apps and retry.';
                         } else {
-                            troubleshootText.textContent = `Camera error: ${err.message}. Ensure you are running on http://localhost or HTTPS.`;
+                            troubleshootText.textContent = `Camera error: ${err.message}. Ensure you are running on http://localhost:8089/guard.html.`;
                         }
                     }
                 }
@@ -486,19 +613,34 @@
         function stopCamera() {
             isCameraRunning = false;
             if (cameraLoopId) cancelAnimationFrame(cameraLoopId);
+            if (currentVideoStream) {
+                try {
+                    currentVideoStream.getTracks().forEach(t => t.stop());
+                } catch (e) {}
+                currentVideoStream = null;
+            }
             if (guardSdk) guardSdk.stopCamera();
-            if (standbyOverlay) standbyOverlay.classList.remove('hidden');
+            if (video) video.srcObject = null;
+            if (standbyOverlay) {
+                standbyOverlay.classList.remove('hidden');
+                standbyOverlay.style.display = 'flex';
+            }
             if (laser) laser.style.display = 'none';
             if (cameraHeaderBtnText) cameraHeaderBtnText.textContent = 'Open Camera';
             if (toggleCameraHeaderBtn) {
-                toggleCameraHeaderBtn.classList.add('bg-red-600/20', 'text-red-300', 'border-red-500/40');
-                toggleCameraHeaderBtn.classList.remove('bg-gray-800', 'text-gray-300', 'border-gray-700');
+                toggleCameraHeaderBtn.classList.remove('bg-neutral-800', 'text-white', 'border-white/30');
             }
             if (toast) toast.textContent = 'Turnstile Camera Stopped. Click Open Camera to resume.';
         }
 
-        // Try auto-start, but gracefully fallback to Standby overlay with Open Camera button if user gesture required
-        startCamera();
+        // Bind internal implementations to global hooks
+        window._guardInternalStartCamera = startCamera;
+        window._guardInternalStopCamera = stopCamera;
+        window._guardInternalToggleCamera = () => {
+            if (isCameraRunning) stopCamera();
+            else startCamera();
+        };
+        window._guardInternalSwitchCamera = switchCamera;
     }
 
     // Enroll all faces from Supabase Cloud + FaceDB into the SDK FaceMatcher
