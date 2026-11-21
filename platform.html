@@ -327,10 +327,10 @@
                             </p>
 
                             <div class="space-y-2 pt-1">
-                                <button onclick="window.truePass && window.truePass.openFaceLoginModal()" class="w-full btn-glass-primary py-3 rounded-xl text-xs flex items-center justify-center gap-2">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                                    <span>Sign In with Face ID</span>
-                                </button>
+                                <a href="onboarding.html?mode=login" class="w-full btn-glass-primary py-3 rounded-xl text-xs flex items-center justify-center gap-2">
+                                    <svg class="w-4 h-4 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"/></svg>
+                                    <span>Sign In to Account</span>
+                                </a>
                                 <div class="grid grid-cols-2 gap-2">
                                     <a href="onboarding.html?mode=login" class="btn-glass py-2.5 rounded-xl text-xs text-center">
                                         Password Sign In
@@ -757,38 +757,6 @@
     </div>
 
     <!-- ======================================================== -->
-    <!-- MODAL: FACE ID INSTANT SIGN IN                           -->
-    <!-- ======================================================== -->
-    <div id="faceIdLoginModal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto hidden">
-        <div class="glass-panel rounded-3xl max-w-sm w-full p-6 text-center space-y-4 border border-white/20 relative my-auto">
-            <button id="closeFaceIdModalBtn" class="absolute top-5 right-5 w-8 h-8 rounded-full bg-neutral-900 border border-white/10 text-neutral-400 hover:text-white flex items-center justify-center text-xs">✕</button>
-
-            <div>
-                <h3 class="text-lg font-bold text-white">Face ID Authentication</h3>
-                <p id="faceIdStatusText" class="text-xs text-neutral-400 mt-1">Position your face in the camera frame</p>
-            </div>
-
-            <div class="relative w-56 aspect-square mx-auto rounded-2xl overflow-hidden bg-black border border-white/20">
-                <video id="faceIdVideo" autoplay muted playsinline class="w-full h-full object-cover"></video>
-                <canvas id="faceIdCanvas" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
-            </div>
-
-            <div id="faceIdMismatchCard" class="hidden p-3 rounded-xl bg-neutral-900 border border-neutral-700 text-xs text-neutral-300">
-                No matching profile found for this face. Enrolled users only.
-            </div>
-
-            <div class="flex items-center justify-center gap-2 pt-1">
-                <button id="openFaceIdCamBtn" class="btn-glass-primary px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5">
-                    <svg class="w-3.5 h-3.5 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z"/><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z"/></svg>
-                    <span>Open Camera</span>
-                </button>
-                <button id="cancelFaceIdBtn" class="btn-glass px-4 py-2 rounded-xl text-xs">
-                    Cancel
-                </button>
-            </div>
-        </div>
-    </div>
-
     <!-- Minimalist Footer -->
     <footer class="border-t border-white/10 bg-[#0a0a0a] py-8 text-xs text-neutral-500">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
