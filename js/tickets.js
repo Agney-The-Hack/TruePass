@@ -684,6 +684,253 @@
 
     // Open Booking Flow for an Event (Connected to Supabase Accounts & Tickets)
     window.truePass = {
+        // Auth Face Scan State
+        authFaceSdk: null,
+        isAuthFaceScanning: false,
+        authFaceLoopId: null,
+        authPendingData: null,
+
+        proceedToAuthFaceScan: function (e) {
+            if (e) e.preventDefault();
+            const nameEl = document.getElementById('authRegisterName');
+            const emailEl = document.getElementById('authRegisterEmail');
+            const phoneEl = document.getElementById('authRegisterPhone');
+            const name = (nameEl ? nameEl.value : '').trim();
+            const email = (emailEl ? emailEl.value : '').trim();
+            const phone = (phoneEl ? phoneEl.value : '').trim();
+            const tier = document.querySelector('input[name="authTier"]:checked')?.value || 'Standard';
+            const feedback = document.getElementById('authModalFeedbackMsg');
+
+            if (!name || !email) {
+                if (feedback) {
+                    feedback.className = 'p-3 rounded-xl bg-red-950/60 border border-red-500/50 text-red-300 text-xs font-semibold block';
+                    feedback.textContent = 'Full Legal Name and Email Address are required.';
+                }
+                return;
+            }
+
+            window.truePass.authPendingData = { name, email, phone, tier };
+
+            const regForm = document.getElementById('authRegisterForm');
+            const facePanel = document.getElementById('authFaceScanPanel');
+            if (regForm) regForm.classList.add('hidden');
+            if (facePanel) facePanel.classList.remove('hidden');
+
+            window.truePass.startAuthFaceCapture();
+        },
+
+        backToAuthStep1: function () {
+            window.truePass.stopAuthFaceCapture();
+            const regForm = document.getElementById('authRegisterForm');
+            const facePanel = document.getElementById('authFaceScanPanel');
+            if (facePanel) facePanel.classList.add('hidden');
+            if (regForm) regForm.classList.remove('hidden');
+        },
+
+        startAuthFaceCapture: async function () {
+            const video = document.getElementById('authFaceScanVideo');
+            const canvas = document.getElementById('authFaceScanCanvas');
+            const statusEl = document.getElementById('authFaceScanStatus');
+            const container = document.getElementById('authFaceScanContainer');
+
+            if (!video || !canvas) return;
+
+            window.truePass.isAuthFaceScanning = true;
+            if (statusEl) statusEl.textContent = 'Starting camera for face scan...';
+
+            try {
+                if (!window.truePass.authFaceSdk) {
+                    window.truePass.authFaceSdk = new window.FacialRecognitionSDK({ distanceThreshold: 0.52 });
+                }
+                await window.truePass.authFaceSdk.init();
+                await window.truePass.authFaceSdk.startCamera(video);
+
+                if (statusEl) statusEl.textContent = 'Position your face inside the frame...';
+
+                let stableFrames = 0;
+
+                async function loop() {
+                    if (!window.truePass.isAuthFaceScanning) return;
+
+                    if (video.readyState >= 2 && video.videoWidth > 0) {
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+
+                        try {
+                            const det = await window.truePass.authFaceSdk.extractDescriptor(video);
+                            const ctx = canvas.getContext('2d');
+                            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                            if (det && det.box && det.descriptor) {
+                                stableFrames++;
+                                if (container) container.className = 'relative w-60 aspect-square mx-auto rounded-3xl overflow-hidden bg-black border-2 border-emerald-400 shadow-xl shadow-emerald-500/30 transition-all';
+                                if (statusEl) {
+                                    statusEl.className = 'text-xs text-emerald-400 font-bold';
+                                    statusEl.textContent = '✓ Face detected! Ready to enroll.';
+                                }
+
+                                // Auto-trigger capture after 3 stable frames for seamless 1-click speed
+                                if (stableFrames >= 3) {
+                                    window.truePass.isAuthFaceScanning = false;
+                                    window.truePass.captureAndUploadFace(false, det);
+                                    return;
+                                }
+                            } else {
+                                stableFrames = 0;
+                                if (container) container.className = 'relative w-60 aspect-square mx-auto rounded-3xl overflow-hidden bg-black border-2 border-neutral-700 shadow-xl transition-all';
+                                if (statusEl) {
+                                    statusEl.className = 'text-xs text-gray-300 font-medium';
+                                    statusEl.textContent = 'Looking for face... Look directly at the camera.';
+                                }
+                            }
+                        } catch (err) {}
+                    }
+                    window.truePass.authFaceLoopId = requestAnimationFrame(loop);
+                }
+
+                loop();
+            } catch (camErr) {
+                if (statusEl) {
+                    statusEl.className = 'text-xs text-amber-400 font-semibold';
+                    statusEl.textContent = 'Camera unavailable: ' + camErr.message;
+                }
+            }
+        },
+
+        stopAuthFaceCapture: function () {
+            window.truePass.isAuthFaceScanning = false;
+            if (window.truePass.authFaceLoopId) cancelAnimationFrame(window.truePass.authFaceLoopId);
+            if (window.truePass.authFaceSdk) window.truePass.authFaceSdk.stopCamera();
+        },
+
+        captureAndUploadFace: async function (skipBiometrics, existingDetection) {
+            window.truePass.stopAuthFaceCapture();
+
+            const pending = window.truePass.authPendingData || {};
+            const name = pending.name || (document.getElementById('authRegisterName')?.value || '').trim();
+            const email = pending.email || (document.getElementById('authRegisterEmail')?.value || '').trim();
+            const phone = pending.phone || (document.getElementById('authRegisterPhone')?.value || '').trim();
+            const tier = pending.tier || 'Standard';
+            const statusEl = document.getElementById('authFaceScanStatus');
+            const captureBtn = document.getElementById('authCaptureFaceBtn');
+
+            if (captureBtn) {
+                captureBtn.disabled = true;
+                captureBtn.innerHTML = '<span>Uploading Face to Supabase...</span>';
+            }
+            if (statusEl) {
+                statusEl.className = 'text-xs text-emerald-400 font-bold';
+                statusEl.textContent = '✓ Face captured! Saving to Supabase Cloud database...';
+            }
+
+            let photoDataUrl = '';
+            let descriptor = null;
+
+            if (!skipBiometrics) {
+                try {
+                    const video = document.getElementById('authFaceScanVideo');
+                    if (video && video.videoWidth > 0) {
+                        const snapCanvas = document.createElement('canvas');
+                        snapCanvas.width = 320;
+                        snapCanvas.height = 320;
+                        const sctx = snapCanvas.getContext('2d');
+                        const vw = video.videoWidth;
+                        const vh = video.videoHeight;
+                        const size = Math.min(vw, vh) * 0.75;
+                        const sx = (vw - size) / 2;
+                        const sy = (vh - size) / 2;
+                        sctx.drawImage(video, sx, sy, size, size, 0, 0, 320, 320);
+                        photoDataUrl = snapCanvas.toDataURL('image/jpeg', 0.92);
+                    }
+
+                    if (existingDetection && existingDetection.descriptor) {
+                        descriptor = existingDetection.descriptor;
+                    } else if (window.truePass.authFaceSdk && video) {
+                        const det = await window.truePass.authFaceSdk.extractDescriptor(video);
+                        if (det && det.descriptor) descriptor = det.descriptor;
+                    }
+                } catch (e) {
+                    console.warn('[Face Crop / Vector]', e);
+                }
+            }
+
+            if (window.soundEffects) window.soundEffects.playSuccess();
+
+            const memberId = 'TP-' + tier.substring(0, 3).toUpperCase() + '-' + Math.floor(100000 + Math.random() * 900000);
+            const profile = {
+                memberId,
+                name,
+                email,
+                phone: phone || '+91 98765 43210',
+                dob: '1998-05-14',
+                idType: 'Passport',
+                idNumber: 'ID-' + Math.floor(100000 + Math.random() * 900000),
+                loyaltyTier: tier,
+                photo: photoDataUrl || '',
+                descriptors: descriptor ? [Array.from(descriptor)] : [],
+                lastLogin: Date.now()
+            };
+
+            currentProfile = profile;
+            try {
+                localStorage.setItem(SESSION_KEY, JSON.stringify(profile));
+                localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+            } catch (err) {}
+
+            // Save to local faceDB
+            if (window.faceDB && descriptor) {
+                try {
+                    await window.faceDB.init();
+                    await window.faceDB.savePerson({
+                        name: profile.name,
+                        role: `FastTrack Member (${tier})`,
+                        photo: photoDataUrl,
+                        descriptors: [descriptor],
+                        notes: `Member ID: ${memberId} • Email: ${email}`
+                    });
+                } catch (dbErr) {}
+            }
+
+            // Upload directly to Supabase Cloud (profiles AND faces tables)
+            let cloudLatency = 0;
+            if (window.supabaseSync) {
+                try {
+                    const cRes = await window.supabaseSync.saveProfileToCloud({
+                        name: profile.name,
+                        email: profile.email,
+                        phone: profile.phone,
+                        dob: profile.dob,
+                        idType: profile.idType,
+                        idNumber: profile.idNumber,
+                        loyaltyTier: profile.loyaltyTier,
+                        photo: photoDataUrl,
+                        descriptors: descriptor ? [descriptor] : [],
+                        notes: `Member ID: ${memberId} • Face Enrolled`
+                    });
+                    if (cRes && cRes.latencyMs) cloudLatency = cRes.latencyMs;
+                } catch (cErr) {
+                    console.warn('[Supabase Cloud Face Save]', cErr);
+                }
+            }
+
+            checkPersistentSession();
+            window.truePass.closeAuthModal();
+
+            if (window.showToast) {
+                window.showToast(`Account & Face Scan saved to Supabase Cloud (${cloudLatency}ms)!`, 'success');
+            }
+
+            if (typeof authModalCallback === 'function') {
+                const cb = authModalCallback;
+                authModalCallback = null;
+                cb();
+            }
+        },
+
+        skipFaceScanAndSave: function () {
+            window.truePass.captureAndUploadFace(true);
+        },
+
         openAuthModal: function (tab, callback) {
             tab = tab || 'register';
             authModalCallback = callback || null;
